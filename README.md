@@ -1,40 +1,51 @@
 # StayFinder Crawl Workspace
 
-Crawler và demo web cho dataset chỗ lưu trú tại Đà Nẵng phục vụ đồ án **StayFinder**.
+Workspace chuẩn bị dữ liệu cho đồ án **StayFinder**. Từ Phase 0, repo này được dùng để:
 
-## Thành phần chính
+- khóa dataset v1 cho backend/mobile/RAG
+- chuẩn hóa import vào Supabase/Postgres
+- giữ crawler và pipeline dữ liệu ở vai trò hỗ trợ cho app/mobile
 
-- `scripts/`: script crawl Google Maps qua Apify và script chuẩn bị dataset cho web demo
+Web demo cũ đã được loại khỏi repo. Hướng triển khai hiện tại là build lại theo roadmap mới, với **mobile app** là sản phẩm chính.
+
+## Phase 0 Freeze
+
+- Frozen batch v1: `output/danang_accommodations_batch_20260323_082743/`
+- Source of truth v1: `all_types_compact_combined.json`
+- Archive/debug source: `all_types_raw_combined.json`
+- Batch key chính thức: `danang_accommodations_batch_20260323_082743`
+- Phase 0 không recrawl, không đổi batch, không merge batch khác vào v1
+
+Tài liệu canonical:
+
+- [CURRENT_STATE.md](./CURRENT_STATE.md): trạng thái Phase 0, coverage dữ liệu, known issues
+- [PLAN.md](./PLAN.md): roadmap tổng thể sau khi đã chốt data foundation
+- [docs/phase-0-db-import-runbook.md](./docs/phase-0-db-import-runbook.md): runbook migrate/import/verify DB
+- [docs/phase-2-rag-runbook.md](./docs/phase-2-rag-runbook.md): runbook build chunk/embed/query cho RAG LangChain
+
+## Repo Map
+
+- `scripts/`: crawler và importer vào Supabase
 - `examples/`: input mẫu cho các job crawl
-- `output/`: dữ liệu crawl sinh ra cục bộ, đang được gitignore
-- `web-demo/`: web demo React + Vite để duyệt dataset đã tối ưu cho frontend
+- `output/`: batch crawl local/private, đang gitignore
+- `supabase/`: schema baseline và seed data cho DB
 - `about.md`: mô tả đề tài và định hướng hệ thống
 
 ## Yêu cầu
 
 - Python 3.10+
-- Node.js 18+
-- Tài khoản Apify và `APIFY_TOKEN`
+- `APIFY_TOKEN` nếu cần recrawl
+- Credential DB Supabase nếu cần migrate/import remote
 
 ## Thiết lập nhanh
 
 ### Python
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-```
-
-Sau đó cập nhật `APIFY_TOKEN` thật trong `.env`.
-
-### Web Demo
-
-```bash
-cd web-demo
-npm install
-npm run dev
 ```
 
 ## Script chính
@@ -42,29 +53,45 @@ npm run dev
 ### Crawl demo Google Maps
 
 ```bash
-python scripts/apify_google_maps_demo.py
+.venv/bin/python scripts/apify_google_maps_demo.py
 ```
 
 ### Crawl batch chỗ lưu trú Đà Nẵng
 
 ```bash
-python scripts/apify_danang_accommodations_batch.py
+.venv/bin/python scripts/apify_danang_accommodations_batch.py
 ```
 
-### Tạo dataset tối ưu cho web demo
+### Import compact dataset vào Supabase/Postgres
 
 ```bash
-python scripts/prepare_web_batch_dataset.py
+.venv/bin/python scripts/import_compact_to_supabase.py \
+  output/danang_accommodations_batch_20260323_082743/all_types_compact_combined.json \
+  --batch-key danang_accommodations_batch_20260323_082743
 ```
+
+### Build Phase 2 RAG index
+
+```bash
+.venv/bin/python scripts/phase2_rag.py chunk \
+  --batch-key danang_accommodations_batch_20260323_082743
+
+.venv/bin/python scripts/phase2_rag.py embed \
+  --batch-key danang_accommodations_batch_20260323_082743
+```
+
+Chi tiết biến môi trường, migrate, và validation có trong [docs/phase-0-db-import-runbook.md](./docs/phase-0-db-import-runbook.md).
+Phần RAG chi tiết có trong [docs/phase-2-rag-runbook.md](./docs/phase-2-rag-runbook.md).
 
 ## Ghi chú dữ liệu
 
-- `output/` chứa raw và compact dataset theo batch crawl, không nên commit lên GitHub.
-- `web-demo/public/data/batch-082743/` đang là dataset tĩnh phục vụ web demo hiện tại.
-- Nếu repo bắt đầu quá nặng, nên chuyển dataset lớn sang release asset, object storage, hoặc database thay vì commit trực tiếp.
+- `compact` là input chuẩn cho app/backend/mobile/RAG v1.
+- `raw` chỉ dùng cho audit, đối chiếu, và enrichment offline; không expose trực tiếp ra API/app.
+- `output/` chứa dữ liệu crawl local/private, không nên commit lên GitHub.
+- Web demo cũ đã bị gỡ bỏ khỏi repo; không còn frontend legacy nào là nguồn sự thật.
 
 ## Trước khi push GitHub
 
-- Giữ `.env` ở local, không commit secret.
-- Chỉ commit source code, config, ví dụ input, và dataset demo thực sự cần cho web chạy.
-- Nếu từng lỡ commit token ở nơi khác, nên rotate token trước khi public repo.
+- Giữ `.env`, `auth.json`, và mọi credential DB ở local.
+- Chỉ commit source code, migration, docs, config, và ví dụ input cần thiết.
+- Nếu từng lỡ commit token hoặc credential ở nơi khác, hãy rotate trước khi public repo.

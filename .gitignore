@@ -6,15 +6,23 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage/
 
 .env
 .env.*
 !.env.example
+auth.json
+.envrc
 
 output/
 *.log
+*.swp
+*.swo
+*~
 
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
 
@@ -24,3 +32,6 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+supabase/.temp/
+supabase/.branches/
