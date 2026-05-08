@@ -45,7 +45,8 @@ Chatbot v1 chỉ phục vụ **gợi ý lưu trú + local context Đà Nẵng**,
   - review highlights / negatives từ `compact`
   - landmark distances đã precompute
   - local context facts của Đà Nẵng
-- Generation model mặc định bám theo đề cương: **Claude** cho trả lời; embeddings dùng loại **1536-dim** để khớp schema hiện có.
+- Prototype hiện tại chốt mặc định theo implementation trong repo: generate qua `openai_compatible` với model `gpt-5.5`; embeddings dùng loại **1536-dim** để khớp schema hiện có.
+- `anthropic` vẫn là đường cấu hình tùy chọn khi cần, nhưng không còn là mặc định của prototype này.
 - Retrieval flow v1:
   - parse intent
   - áp structured filters trước

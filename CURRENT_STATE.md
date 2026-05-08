@@ -185,6 +185,7 @@ Mọi backend/mobile/RAG work sau Phase 0 phải bám theo các quyết định 
 - Embedding model mặc định: `text-embedding-3-small` (`1536` dimensions)
 - Generation provider mặc định cho prototype: `openai_compatible`
 - Generation model mặc định cho prototype: `gpt-5.5`
+- Quy ước roadmap hiện tại đã bám theo implementation này; `anthropic` chỉ còn là tùy chọn cấu hình, không phải mặc định.
 - Remote schema note:
   - migration `20260508143000_phase2_rag_support.sql` đã được apply lên remote DB
   - migration history đã được repair thành `applied`
