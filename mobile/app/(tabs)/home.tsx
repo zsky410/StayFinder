@@ -13,9 +13,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BrandHeader } from "@/components/brand-header";
 import { theme } from "@/constants/theme";
 
-const avatarImage = require("../../assets/home/avatar.jpg");
 const heroImage = require("../../assets/home/hero.jpg");
 
 const quickFilters = [
@@ -77,11 +77,11 @@ const nearbyPlaces = [
 function SectionHeader({ title, actionLabel }: { title: string; actionLabel?: string }) {
   return (
     <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-      <Text selectable style={{ color: theme.colors.ink, fontSize: 18, fontWeight: "800" }}>
+      <Text selectable style={{ color: theme.colors.ink, fontSize: 18, fontWeight: "700" }}>
         {title}
       </Text>
       {actionLabel ? (
-        <Text selectable style={{ color: theme.colors.accent, fontSize: 14, fontWeight: "800" }}>
+        <Text selectable style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>
           {actionLabel}
         </Text>
       ) : null}
@@ -169,7 +169,7 @@ function QuickFilterChip({
         style={{
           color: selected ? theme.colors.accent : theme.colors.ink,
           fontSize: 15,
-          fontWeight: selected ? "700" : "600",
+          fontWeight: selected ? "600" : "500",
         }}
       >
         {label}
@@ -234,14 +234,14 @@ function FeaturedCard({
               }}
             >
               <Feather color={theme.colors.sun} name="star" size={14} />
-              <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "700" }}>
+              <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "600" }}>
                 {rating}
               </Text>
             </View>
           </View>
 
           <View style={{ gap: 7, paddingHorizontal: 12, paddingBottom: 14, paddingTop: 12 }}>
-            <Text selectable numberOfLines={2} style={{ color: theme.colors.ink, fontSize: 17, fontWeight: "800" }}>
+            <Text selectable numberOfLines={2} style={{ color: theme.colors.ink, fontSize: 17, fontWeight: "700" }}>
               {title}
             </Text>
             <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
@@ -251,7 +251,7 @@ function FeaturedCard({
               </Text>
             </View>
             <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 2 }}>
-              <Text selectable style={{ color: theme.colors.sun, fontSize: 18, fontWeight: "800" }}>
+              <Text selectable style={{ color: theme.colors.sun, fontSize: 18, fontWeight: "700" }}>
                 {price}
               </Text>
               <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "500" }}>
@@ -306,13 +306,13 @@ function NearbyCard({
 
       <View style={{ flex: 1, gap: 8, justifyContent: "center" }}>
         <View style={{ alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between" }}>
-          <Text
-            selectable
-            numberOfLines={2}
-            style={{ color: theme.colors.ink, flex: 1, fontSize: 18, fontWeight: "800", lineHeight: 23 }}
-          >
-            {title}
-          </Text>
+            <Text
+              selectable
+              numberOfLines={2}
+              style={{ color: theme.colors.ink, flex: 1, fontSize: 18, fontWeight: "700", lineHeight: 23 }}
+            >
+              {title}
+            </Text>
           <View
             style={{
               alignItems: "center",
@@ -327,7 +327,7 @@ function NearbyCard({
             }}
           >
             <Feather color={theme.colors.sun} name="star" size={12} />
-            <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "700" }}>
+            <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "600" }}>
               {rating}
             </Text>
           </View>
@@ -341,7 +341,7 @@ function NearbyCard({
         </View>
 
         <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 2 }}>
-          <Text selectable style={{ color: theme.colors.sun, fontSize: 18, fontWeight: "800" }}>
+          <Text selectable style={{ color: theme.colors.sun, fontSize: 18, fontWeight: "700" }}>
             {price}
           </Text>
           <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "500" }}>
@@ -371,43 +371,10 @@ export default function HomeTabRoute() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-          <View style={{ alignItems: "center", flexDirection: "row", gap: 12 }}>
-            <Image source={avatarImage} style={{ borderRadius: 24, height: 48, width: 48 }} />
-            <Text selectable style={{ color: theme.colors.accent, fontSize: 25, fontWeight: "800" }}>
-              StayFinder VN
-            </Text>
-          </View>
-
-          <Pressable
-            onPress={() => router.push("/chat")}
-            style={({ pressed }) => ({
-              alignItems: "center",
-              height: 42,
-              justifyContent: "center",
-              opacity: pressed ? 0.72 : 1,
-              width: 42,
-            })}
-          >
-            <Feather color={theme.colors.ink} name="bell" size={24} />
-            <View
-              style={{
-                backgroundColor: theme.colors.coral,
-                borderColor: theme.colors.surface,
-                borderRadius: 999,
-                borderWidth: 2,
-                height: 12,
-                position: "absolute",
-                right: 5,
-                top: 5,
-                width: 12,
-              }}
-            />
-          </Pressable>
-        </View>
+        <BrandHeader bellSize={24} logoHeight={46} logoWidth={192} onPressBell={() => router.push("/chat")} showNotificationDot />
 
         <View style={{ gap: 10 }}>
-          <Text selectable style={{ color: theme.colors.muted, fontSize: 15, fontWeight: "800", letterSpacing: 0.8 }}>
+          <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "600", letterSpacing: 0.7 }}>
             TÌM KIẾM
           </Text>
           <SearchBar />
@@ -439,9 +406,9 @@ export default function HomeTabRoute() {
                 selectable
                 style={{
                   color: "#FFFFFF",
-                  fontSize: 23,
-                  fontWeight: "800",
-                  lineHeight: 34,
+                  fontSize: 22,
+                  fontWeight: "700",
+                  lineHeight: 32,
                   maxWidth: 240,
                   textShadowColor: "rgba(0, 0, 0, 0.28)",
                   textShadowOffset: { width: 0, height: 2 },
@@ -455,7 +422,7 @@ export default function HomeTabRoute() {
         </Pressable>
 
         <View style={{ gap: 14 }}>
-          <Text selectable style={{ color: theme.colors.muted, fontSize: 15, fontWeight: "800", letterSpacing: 0.8 }}>
+          <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "600", letterSpacing: 0.7 }}>
             BỘ LỌC NHANH
           </Text>
           <View style={{ flexDirection: "row", gap: 10 }}>

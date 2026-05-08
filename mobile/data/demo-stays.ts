@@ -56,6 +56,164 @@ export const resultCards = [
   },
 ] as const;
 
+export const mapListings = [
+  {
+    id: "demo-son-tra-villa",
+    detailId: "demo-son-tra-villa" as const,
+    title: "Villa Sơn Trà View",
+    district: "Bán đảo Sơn Trà",
+    rating: "4.8",
+    price: "680.000đ",
+    priceShort: "680k",
+    latitude: 16.0108,
+    longitude: 108.155,
+    image: sharedAssets.oceanVilla,
+  },
+  {
+    id: "demo-bien-xanh-map",
+    detailId: "demo-bien-xanh" as const,
+    title: "Sea Breeze House",
+    district: "Biển Mỹ Khê",
+    rating: "4.8",
+    price: "450.000đ",
+    priceShort: "450k",
+    latitude: 16.074,
+    longitude: 108.183,
+    image: sharedAssets.coralStudio,
+  },
+  {
+    id: "ocean-view-villa-map",
+    detailId: "ocean-view-villa" as const,
+    title: "Ocean View Villa",
+    district: "Ngũ Hành Sơn",
+    rating: "4.9",
+    price: "1.200.000đ",
+    priceShort: "1.2M",
+    latitude: 15.998,
+    longitude: 108.236,
+    image: sharedAssets.sunriseBoutique,
+  },
+] as const;
+
+export const mapOverlayPoints = {
+  cluster: {
+    latitude: 16.061,
+    longitude: 108.214,
+    label: "12",
+  },
+  focus: {
+    latitude: 16.03,
+    longitude: 108.202,
+  },
+} as const;
+
+export const defaultMapListingId = "demo-son-tra-villa" as const;
+
+export const aiChatDemo = {
+  headerTitle: "AI Tư vấn Đà Nẵng",
+  statusText: "Đang hoạt động",
+  timestamp: "Hôm nay, 09:41 AM",
+  messages: [
+    {
+      id: "user-1",
+      role: "user" as const,
+      text: "Mình cần tìm một homestay yên tĩnh gần biển, cho phép mang theo thú cưng và tiện đi xem cầu Rồng phun lửa.",
+    },
+    {
+      id: "assistant-1",
+      role: "assistant" as const,
+      text: "Chào bạn! Đà Nẵng có nhiều lựa chọn tuyệt vời đáp ứng nhu cầu của bạn. Khu vực gần biển Mỹ Khê và bãi Phạm Văn Đồng sẽ rất lý tưởng. Dưới đây là một số gợi ý homestay yên tĩnh, pet-friendly và dễ dàng di chuyển đến Cầu Rồng:",
+    },
+    {
+      id: "user-2",
+      role: "user" as const,
+      text: "Giá có thể thương lượng nếu mình ở dài ngày (khoảng 10 ngày) không?",
+    },
+  ],
+  suggestions: [
+    {
+      id: "demo-bien-xanh",
+      detailId: "demo-bien-xanh" as const,
+      title: "Sea Breeze House",
+      area: "Biển Mỹ Khê",
+      rating: "4.8",
+      priceShort: "450k",
+      image: sharedAssets.coralStudio,
+    },
+    {
+      id: "sunrise-boutique-hotel",
+      detailId: "sunrise-boutique-hotel" as const,
+      title: "Sunrise Boutique",
+      area: "An Thượng",
+      rating: "4.9",
+      priceShort: "650k",
+      image: sharedAssets.sunriseBoutique,
+    },
+    {
+      id: "ocean-view-villa",
+      detailId: "ocean-view-villa" as const,
+      title: "Ocean View Villa",
+      area: "Sơn Trà",
+      rating: "4.8",
+      priceShort: "850k",
+      image: sharedAssets.oceanVilla,
+    },
+  ],
+} as const;
+
+export const savedPlacesDemo = [
+  {
+    id: "saved-azure-boutique",
+    detailId: "sunrise-boutique-hotel" as const,
+    title: "Azure Boutique Hotel",
+    location: "Quận Sơn Trà, Đà Nẵng",
+    oldPrice: "1.200.000đ",
+    price: "950.000đ",
+    rating: "4.9",
+    image: sharedAssets.sunriseBoutique,
+  },
+  {
+    id: "saved-homestay-bien-xanh",
+    detailId: "demo-bien-xanh" as const,
+    title: "Homestay Biển Xanh",
+    location: "Ngũ Hành Sơn, Đà Nẵng",
+    oldPrice: null,
+    price: "450.000đ",
+    rating: null,
+    image: sharedAssets.coralStudio,
+  },
+  {
+    id: "saved-the-ocean-villas",
+    detailId: "ocean-view-villa" as const,
+    title: "The Ocean Villas",
+    location: "Hội An, Quảng Nam",
+    oldPrice: null,
+    price: "3.200.000đ",
+    rating: "5.0",
+    image: sharedAssets.nearbyHotel,
+  },
+  {
+    id: "saved-villa-son-tra-view",
+    detailId: "demo-son-tra-villa" as const,
+    title: "Villa Sơn Trà View",
+    location: "Bán đảo Sơn Trà, Đà Nẵng",
+    oldPrice: "1.450.000đ",
+    price: "1.200.000đ",
+    rating: "4.8",
+    image: sharedAssets.oceanVilla,
+  },
+  {
+    id: "saved-sea-breeze-house",
+    detailId: "demo-bien-xanh" as const,
+    title: "Sea Breeze House",
+    location: "Biển Mỹ Khê, Đà Nẵng",
+    oldPrice: null,
+    price: "650.000đ",
+    rating: "4.7",
+    image: sharedAssets.homeHero,
+  },
+] as const;
+
 export const detailByPlaceId = {
   "demo-bien-xanh": {
     id: "demo-bien-xanh",

@@ -8,9 +8,9 @@ import { theme } from "@/constants/theme";
 const TAB_CONFIG = {
   home: { label: "Trang chủ", kind: "home" },
   map: { label: "Bản đồ", kind: "map" },
-  chat: { label: "AI", kind: "chat" },
+  chat: { label: "AI Chat", kind: "chat" },
   saved: { label: "Đã lưu", kind: "saved" },
-  profile: { label: "Tôi", kind: "profile" },
+  profile: { label: "Cá nhân", kind: "profile" },
 } as const;
 
 function TabIcon({
@@ -104,7 +104,7 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
                 justifyContent: "center",
                 minHeight: 70,
                 opacity: pressed ? 0.82 : 1,
-                paddingHorizontal: 6,
+                paddingHorizontal: 4,
                 paddingVertical: 8,
               })}
             >
@@ -113,8 +113,8 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
                 numberOfLines={1}
                 style={{
                   color: isFocused ? "#FFFFFF" : theme.colors.muted,
-                  fontSize: 11,
-                  fontWeight: isFocused ? "800" : "700",
+                  fontSize: 10.5,
+                  fontWeight: isFocused ? "700" : "500",
                   lineHeight: 13,
                   textAlign: "center",
                 }}

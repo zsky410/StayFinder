@@ -32,7 +32,7 @@ function RootLayoutNav() {
           headerShadowVisible: false,
           headerTintColor: theme.colors.ink,
           headerTitleStyle: {
-            fontWeight: "700",
+            fontWeight: "600",
           },
         }}
       >

@@ -299,7 +299,7 @@ export default function PlaceDetailRoute() {
                 }}
               >
                 <MaterialCommunityIcons color={theme.colors.ink} name="image-multiple-outline" size={18} />
-                <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "700" }}>
+                <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "600" }}>
                   {place.photoCount}
                 </Text>
               </View>
@@ -324,7 +324,7 @@ export default function PlaceDetailRoute() {
                 color: theme.colors.ink,
                 flex: 1,
                 fontSize: 21,
-                fontWeight: "800",
+                fontWeight: "700",
                 lineHeight: 31,
                 paddingTop: 4,
               }}
@@ -345,7 +345,7 @@ export default function PlaceDetailRoute() {
             >
               <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
                 <Feather color={theme.colors.sun} name="star" size={16} />
-                <Text selectable style={{ color: theme.colors.sun, fontSize: 16, fontWeight: "800" }}>
+                <Text selectable style={{ color: theme.colors.sun, fontSize: 16, fontWeight: "700" }}>
                   {place.rating}
                 </Text>
               </View>
@@ -361,13 +361,13 @@ export default function PlaceDetailRoute() {
               {place.distance}
             </Text>
             <Text selectable style={{ color: "#8A92A9", fontSize: 16 }}>•</Text>
-            <Text selectable style={{ color: theme.colors.accent, fontSize: 15, fontWeight: "700" }}>
+            <Text selectable style={{ color: theme.colors.accent, fontSize: 15, fontWeight: "600" }}>
               {place.mapLabel}
             </Text>
           </View>
 
           <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 6, marginTop: 18 }}>
-            <Text selectable style={{ color: theme.colors.sun, fontSize: 19, fontWeight: "800" }}>
+            <Text selectable style={{ color: theme.colors.sun, fontSize: 19, fontWeight: "700" }}>
               {place.price}
             </Text>
             <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "500" }}>
@@ -392,7 +392,7 @@ export default function PlaceDetailRoute() {
                 }}
               >
                 <DetailTagIcon tag={tag} />
-                <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "600" }}>
+                <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "500" }}>
                   {tag}
                 </Text>
               </View>
@@ -424,14 +424,14 @@ export default function PlaceDetailRoute() {
               }}
             >
               <MaterialCommunityIcons color="#FFFFFF" name="star-four-points-outline" size={15} />
-              <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "700" }}>AI Tóm tắt đánh giá</Text>
+              <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "600" }}>AI Tóm tắt đánh giá</Text>
             </View>
 
             <View style={{ gap: 14, marginTop: 30 }}>
               <View style={{ alignItems: "flex-start", flexDirection: "row", gap: 10 }}>
                 <Feather color={theme.colors.accent} name="check-circle" size={22} style={{ marginTop: 1 }} />
                 <View style={{ flex: 1, gap: 4 }}>
-                  <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "800" }}>
+                  <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "600" }}>
                     {place.summary.positiveTitle}
                   </Text>
                   <Text selectable style={{ color: theme.colors.ink, fontSize: 15, lineHeight: 23 }}>
@@ -445,7 +445,7 @@ export default function PlaceDetailRoute() {
               <View style={{ alignItems: "flex-start", flexDirection: "row", gap: 10 }}>
                 <MaterialCommunityIcons color="#C24E0D" name="alert-circle-outline" size={22} style={{ marginTop: 1 }} />
                 <View style={{ flex: 1, gap: 4 }}>
-                  <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "800" }}>
+                  <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "600" }}>
                     {place.summary.cautionTitle}
                   </Text>
                   <Text selectable style={{ color: theme.colors.ink, fontSize: 15, lineHeight: 23 }}>
@@ -457,7 +457,7 @@ export default function PlaceDetailRoute() {
           </View>
 
           <View style={{ gap: 18, marginTop: 34 }}>
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "800" }}>
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "700" }}>
               Tiện nghi
             </Text>
 
@@ -496,14 +496,14 @@ export default function PlaceDetailRoute() {
                 justifyContent: "center",
               }}
             >
-              <Text style={{ color: theme.colors.accent, fontSize: 16, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.accent, fontSize: 16, fontWeight: "600" }}>
                 Xem tất cả 24 tiện nghi
               </Text>
             </Pressable>
           </View>
 
           <View style={{ gap: 16, marginTop: 34 }}>
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "800" }}>
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "700" }}>
               Vị trí
             </Text>
             <FauxMap />
@@ -569,7 +569,7 @@ export default function PlaceDetailRoute() {
           }}
         >
           <Feather color="#FFFFFF" name="bookmark" size={20} />
-          <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>Lưu địa điểm</Text>
+          <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "600" }}>Lưu địa điểm</Text>
         </Pressable>
       </View>
     </View>

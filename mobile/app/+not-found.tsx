@@ -17,7 +17,7 @@ export default function NotFoundScreen() {
           padding: 24,
         }}
       >
-        <Text selectable style={{ color: theme.colors.ink, fontSize: 22, fontWeight: "700", textAlign: "center" }}>
+        <Text selectable style={{ color: theme.colors.ink, fontSize: 21, fontWeight: "600", textAlign: "center" }}>
           Route này chưa tồn tại trong demo Phase 4.
         </Text>
 
@@ -31,7 +31,7 @@ export default function NotFoundScreen() {
               paddingVertical: 14,
             })}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}>Quay về Home</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>Quay về Home</Text>
           </Pressable>
         </Link>
       </View>

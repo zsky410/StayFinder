@@ -28,7 +28,7 @@ export default function FilterSheetRoute() {
                 padding: 16,
               }}
             >
-              <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "600" }}>
+              <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "500" }}>
                 {item}
               </Text>
             </View>

@@ -4,21 +4,13 @@ import { StatusBar } from "expo-status-bar";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { sharedAssets, resultCards, resultFilters } from "@/data/demo-stays";
+import { BrandHeader } from "@/components/brand-header";
 import { theme } from "@/constants/theme";
+import { resultCards, resultFilters } from "@/data/demo-stays";
 
 function Header() {
   return (
-    <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-      <View style={{ alignItems: "center", flexDirection: "row", gap: 12 }}>
-        <Image source={sharedAssets.avatar} style={{ borderRadius: 18, height: 36, width: 36 }} />
-        <Text selectable style={{ color: theme.colors.accent, fontSize: 24, fontWeight: "800" }}>
-          StayFinder VN
-        </Text>
-      </View>
-
-      <Feather color={theme.colors.ink} name="bell" size={18} />
-    </View>
+    <BrandHeader bellSize={18} logoHeight={34} logoWidth={146} />
   );
 }
 
@@ -49,7 +41,7 @@ function FilterChip({
         style={{
           color: selected ? theme.colors.accent : theme.colors.muted,
           fontSize: 12,
-          fontWeight: selected ? "700" : "600",
+          fontWeight: selected ? "600" : "500",
         }}
       >
         {label}
@@ -221,7 +213,7 @@ function ResultCard({
                 name={item.badge.tone === "blue" ? "fire" : "waves"}
                 size={13}
               />
-              <Text style={{ color: badgeTone.fg, fontSize: 11, fontWeight: "700" }}>{item.badge.label}</Text>
+              <Text style={{ color: badgeTone.fg, fontSize: 11, fontWeight: "600" }}>{item.badge.label}</Text>
             </View>
           ) : null}
 
@@ -243,7 +235,7 @@ function ResultCard({
             }}
           >
             <Feather color={theme.colors.sun} name="star" size={12} />
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 12, fontWeight: "700" }}>
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 12, fontWeight: "600" }}>
               {item.rating}
             </Text>
           </View>
@@ -266,7 +258,7 @@ function ResultCard({
         </View>
 
         <View style={{ gap: 8, paddingHorizontal: 14, paddingBottom: 14, paddingTop: 14 }}>
-          <Text selectable style={{ color: theme.colors.ink, fontSize: 18, fontWeight: "800" }}>
+          <Text selectable style={{ color: theme.colors.ink, fontSize: 18, fontWeight: "700" }}>
             {item.title}
           </Text>
           <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
@@ -287,7 +279,7 @@ function ResultCard({
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: theme.colors.ink, fontSize: 10, fontWeight: "700" }}>{chip}</Text>
+                <Text style={{ color: theme.colors.ink, fontSize: 10, fontWeight: "600" }}>{chip}</Text>
               </View>
             ))}
           </View>
@@ -320,7 +312,7 @@ function ResultCard({
                 <View />
               )}
               <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 2 }}>
-                <Text selectable style={{ color: theme.colors.sun, fontSize: 16, fontWeight: "800" }}>
+                <Text selectable style={{ color: theme.colors.sun, fontSize: 16, fontWeight: "700" }}>
                   {item.price}
                 </Text>
                 <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "500" }}>
@@ -338,7 +330,7 @@ function ResultCard({
                 paddingVertical: 8,
               }}
             >
-              <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "700" }}>Đặt ngay</Text>
+              <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "600" }}>Đặt ngay</Text>
             </Pressable>
           </View>
         </View>
@@ -379,11 +371,11 @@ export default function ResultsRoute() {
           <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
             <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
               <Feather color={theme.colors.accent} name="sliders" size={17} />
-              <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "700" }}>
+              <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "600" }}>
                 Bộ lọc
               </Text>
             </View>
-            <Text selectable style={{ color: theme.colors.accent, fontSize: 12, fontWeight: "600" }}>
+            <Text selectable style={{ color: theme.colors.accent, fontSize: 12, fontWeight: "500" }}>
               Xóa bộ lọc
             </Text>
           </View>
@@ -391,7 +383,7 @@ export default function ResultsRoute() {
           <View style={{ backgroundColor: theme.colors.chipBorder, height: 1 }} />
 
           <View style={{ gap: 10 }}>
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "700" }}>
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "600" }}>
               Khu vực
             </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -402,14 +394,14 @@ export default function ResultsRoute() {
           </View>
 
           <View style={{ gap: 10 }}>
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "700" }}>
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "600" }}>
               Khoảng giá
             </Text>
             <PriceSlider />
           </View>
 
           <View style={{ gap: 10 }}>
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "700" }}>
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "600" }}>
               Loại hình
             </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -420,7 +412,7 @@ export default function ResultsRoute() {
           </View>
 
           <View style={{ gap: 12 }}>
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "700" }}>
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "600" }}>
               Tiện ích
             </Text>
             <View style={{ gap: 10 }}>
@@ -439,12 +431,12 @@ export default function ResultsRoute() {
               justifyContent: "center",
             }}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "700" }}>Áp dụng</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "600" }}>Áp dụng</Text>
           </Pressable>
         </View>
 
         <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-          <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "800" }}>
+          <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "700" }}>
             Tìm thấy 34 địa điểm
           </Text>
           <MaterialCommunityIcons color={theme.colors.ink} name="swap-vertical" size={18} />

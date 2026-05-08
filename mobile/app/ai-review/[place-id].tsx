@@ -38,7 +38,7 @@ export default function AiReviewRoute() {
             boxShadow: "0 12px 32px rgba(22, 41, 48, 0.08)",
           }}
         >
-          <Text selectable style={{ color: theme.colors.ink, fontSize: 18, fontWeight: "700" }}>
+          <Text selectable style={{ color: theme.colors.ink, fontSize: 17, fontWeight: "600" }}>
             Place ID demo
           </Text>
           <Text selectable style={{ color: theme.colors.muted, fontSize: 15, lineHeight: 23 }}>

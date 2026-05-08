@@ -80,10 +80,10 @@ export function PlaceholderScreen({
               paddingVertical: 8,
             }}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>{badge}</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "600", letterSpacing: 0.4 }}>{badge}</Text>
           </View>
 
-          <Text selectable style={{ color: theme.colors.ink, fontSize: 30, fontWeight: "800", lineHeight: 34 }}>
+          <Text selectable style={{ color: theme.colors.ink, fontSize: 28, fontWeight: "700", lineHeight: 33 }}>
             {title}
           </Text>
           <Text selectable style={{ color: theme.colors.muted, fontSize: 16, lineHeight: 24 }}>

@@ -1,142 +1,62 @@
 import { useEffect } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Image, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Stack, useRouter } from "expo-router";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 
-import { theme } from "@/constants/theme";
+const splashLogo = require("../assets/branding/splash-logo.png");
 
 export default function SplashRoute() {
   const router = useRouter();
+  const logoScale = useSharedValue(0.98);
 
   useEffect(() => {
+    logoScale.value = withRepeat(
+      withTiming(1.04, { duration: 1350, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true
+    );
+
     const timeout = setTimeout(() => {
       router.replace("/home");
-    }, 1400);
+    }, 1700);
 
     return () => clearTimeout(timeout);
-  }, [router]);
+  }, [logoScale, router]);
+
+  const logoAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: logoScale.value }],
+  }));
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.page }}>
-      <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
+    <View style={{ backgroundColor: "#FFFFFF", flex: 1 }}>
+      <Stack.Screen options={{ gestureEnabled: false, headerShown: false }} />
       <StatusBar style="dark" />
 
       <View
         style={{
-          pointerEvents: "none",
-          position: "absolute",
-          top: -120,
-          right: -40,
-          width: 280,
-          height: 280,
-          borderRadius: 999,
-          backgroundColor: theme.colors.accent,
-          opacity: 0.14,
-        }}
-      />
-      <View
-        style={{
-          pointerEvents: "none",
-          position: "absolute",
-          bottom: -90,
-          left: -50,
-          width: 220,
-          height: 220,
-          borderRadius: 999,
-          backgroundColor: theme.colors.sun,
-          opacity: 0.18,
-        }}
-      />
-
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: "space-between",
-          paddingHorizontal: 24,
-          paddingTop: 84,
-          paddingBottom: 32,
+          alignItems: "center",
+          flex: 1,
+          justifyContent: "center",
         }}
       >
-        <View style={{ gap: 18 }}>
-          <View
+        <Animated.View style={logoAnimatedStyle}>
+          <Image
+            resizeMode="contain"
+            source={splashLogo}
             style={{
-              alignSelf: "flex-start",
-              borderRadius: 999,
-              borderCurve: "continuous",
-              backgroundColor: theme.colors.ink,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
+              height: 214,
+              width: 214,
             }}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "700", letterSpacing: 0.8 }}>
-              STAYFINDER PHASE 4
-            </Text>
-          </View>
-
-          <Text
-            selectable
-            style={{
-              color: theme.colors.ink,
-              fontSize: 44,
-              fontWeight: "800",
-              lineHeight: 48,
-            }}
-          >
-            StayFinder
-          </Text>
-          <Text
-            selectable
-            style={{
-              color: theme.colors.muted,
-              fontSize: 17,
-              lineHeight: 26,
-              maxWidth: 320,
-            }}
-          >
-            Demo mobile Android-first cho luồng tìm nơi ở tại Đà Nẵng, bắt đầu từ splash rồi đi vào Home và
-            các tab chính.
-          </Text>
-        </View>
-
-        <View
-          style={{
-            gap: 16,
-            borderRadius: 28,
-            borderCurve: "continuous",
-            backgroundColor: theme.colors.surface,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            padding: 22,
-            boxShadow: "0 16px 40px rgba(22, 41, 48, 0.10)",
-          }}
-        >
-          <View style={{ gap: 8 }}>
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 22, fontWeight: "700" }}>
-              Splash Screen
-            </Text>
-            <Text selectable style={{ color: theme.colors.muted, fontSize: 15, lineHeight: 23 }}>
-              App sẽ tự chuyển sang tab Trang chủ sau khoảng 1.4 giây. Bạn cũng có thể bấm nút bên dưới để vào
-              nhanh màn demo.
-            </Text>
-          </View>
-
-          <Pressable
-            onPress={() => router.replace("/home")}
-            style={({ pressed }) => ({
-              borderRadius: 20,
-              borderCurve: "continuous",
-              backgroundColor: pressed ? theme.colors.accentPressed : theme.colors.accent,
-              paddingHorizontal: 18,
-              paddingVertical: 16,
-            })}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700", textAlign: "center" }}>
-              Vào Trang chủ demo
-            </Text>
-          </Pressable>
-        </View>
-      </ScrollView>
+          />
+        </Animated.View>
+      </View>
     </View>
   );
 }
