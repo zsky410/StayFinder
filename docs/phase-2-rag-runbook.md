@@ -111,13 +111,15 @@ Re-embed toàn bộ:
   --json
 ```
 
-### Có generate answer bằng Claude
+### Có generate answer bằng provider đang cấu hình
 
 ```bash
 .venv/bin/python scripts/phase2_rag.py query \
   "homestay gần biển có wifi" \
   --generate
 ```
+
+Mặc định nếu không đổi env, lệnh trên sẽ dùng `openai_compatible` + `gpt-5.5`.
 
 Ghi chú:
 
@@ -134,7 +136,7 @@ Ghi chú:
   --place-id ChIJbeO3ddMZQjERzeIxy-6JpYc
 ```
 
-### Claude-based summary
+### LLM-based summary theo provider cấu hình
 
 ```bash
 .venv/bin/python scripts/phase2_rag.py review-summary \
@@ -142,6 +144,11 @@ Ghi chú:
   --use-claude \
   --refresh
 ```
+
+Ghi chú:
+
+- Cờ `--use-claude` là tên cũ được giữ lại để tương thích.
+- Khi bật cờ này, script sẽ dùng chat provider đang cấu hình (`openai_compatible` hoặc `anthropic`) thay vì heuristic fallback.
 
 ## 7. Validation
 

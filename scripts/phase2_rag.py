@@ -1248,7 +1248,7 @@ def cmd_query(args: argparse.Namespace) -> int:
                 f"  nearest: {landmark.get('name')} ({format_distance_m(landmark.get('distance_m'))}, bird-flight)"
             )
     if generated_answer:
-        print("\nClaude answer:\n")
+        print("\nGenerated answer:\n")
         print(generated_answer)
     elif semantic_error:
         print("\nSemantic retrieval note:")
@@ -1379,7 +1379,7 @@ def generate_llm_review_summary(place: dict[str, Any], *, model_name: str) -> di
     summary_text = str(payload.get("summary_text") or "").strip()
     bullets = [str(item).strip() for item in (payload.get("bullets") or []) if str(item).strip()]
     if not summary_text:
-        raise SystemExit("Claude returned an empty summary_text for review summary generation.")
+        raise SystemExit("Configured chat provider returned an empty summary_text for review summary generation.")
     return {
         "summary_text": summary_text,
         "bullets": unique_preserve(bullets)[:6],
@@ -1513,7 +1513,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument(
         "--use-claude",
         action="store_true",
-        help="Use the configured chat provider instead of heuristic fallback",
+        help="Use the configured chat provider instead of heuristic fallback (legacy flag name kept for compatibility)",
     )
     review.add_argument("--refresh", action="store_true", help="Ignore cached summary and regenerate")
     review.set_defaults(func=cmd_review_summary)
