@@ -48,6 +48,16 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+### Node.js backend (Phase 3)
+
+```bash
+npm install
+npm run dev
+```
+
+Backend mặc định chạy ở `http://localhost:3000`.
+Public API không cần auth; admin API cần `Authorization: Bearer <ADMIN_API_TOKEN>` hoặc header `x-admin-token`.
+
 ## Script chính
 
 ### Crawl demo Google Maps
@@ -79,6 +89,42 @@ cp .env.example .env
 .venv/bin/python scripts/phase2_rag.py embed \
   --batch-key danang_accommodations_batch_20260323_082743
 ```
+
+### Chạy Backend Phase 3
+
+```bash
+npm run dev
+```
+
+Public endpoints v1:
+
+- `GET /health`
+- `GET /places`
+- `GET /places/:id`
+- `GET /places/map`
+- `GET /filters/meta`
+- `GET /landmarks`
+- `POST /chat/query`
+- `POST /ai/review-summary`
+
+Admin endpoints v1:
+
+- `GET|POST|PATCH|DELETE /admin/places`
+- `GET|POST|PATCH|DELETE /admin/landmarks`
+- `GET|POST|PATCH|DELETE /admin/local-context-notes`
+- `GET /admin/jobs`
+- `GET /admin/jobs/:id`
+- `POST /admin/jobs/distance/rebuild`
+- `POST /admin/jobs/chunks/rebuild`
+- `POST /admin/jobs/embeddings/rebuild`
+- `POST /admin/jobs/review-summaries/rebuild`
+
+Ghi chú:
+
+- Chat và AI review summary của backend Phase 3 đang reuse trực tiếp `scripts/phase2_rag.py` để giữ cùng retrieval/generation behavior với Phase 2.
+- Endpoint rebuild distance gọi SQL function `refresh_place_landmark_metrics(...)`; endpoint AI jobs gọi lại pipeline Python theo `batchKey` hoặc `placeIds`.
+- Ví dụ query nên dùng tiếng Việt có dấu như: `cho tôi gợi ý nơi ở view đẹp ven sông Hàn` hoặc `khách sạn gần Cầu Rồng cho gia đình`.
+- Các admin job endpoint mặc định chạy nền và trả về `job_id`; nếu muốn chờ xong ngay trong request thì gửi thêm `{"wait": true}` trong body.
 
 Chi tiết biến môi trường, migrate, và validation có trong [docs/phase-0-db-import-runbook.md](./docs/phase-0-db-import-runbook.md).
 Phần RAG chi tiết có trong [docs/phase-2-rag-runbook.md](./docs/phase-2-rag-runbook.md).
