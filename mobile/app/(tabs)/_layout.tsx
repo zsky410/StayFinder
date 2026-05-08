@@ -45,6 +45,13 @@ export default function TabLayout() {
           title: "Cá nhân",
         }}
       />
+      <Tabs.Screen
+        name="results"
+        options={{
+          href: null,
+          title: "Kết quả",
+        }}
+      />
     </Tabs>
   );
 }

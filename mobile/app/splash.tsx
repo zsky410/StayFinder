@@ -22,8 +22,8 @@ export default function SplashRoute() {
       <StatusBar style="dark" />
 
       <View
-        pointerEvents="none"
         style={{
+          pointerEvents: "none",
           position: "absolute",
           top: -120,
           right: -40,
@@ -35,8 +35,8 @@ export default function SplashRoute() {
         }}
       />
       <View
-        pointerEvents="none"
         style={{
+          pointerEvents: "none",
           position: "absolute",
           bottom: -90,
           left: -50,

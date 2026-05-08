@@ -39,9 +39,8 @@ function RootLayoutNav() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="splash" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="results" options={{ title: "Kết quả" }} />
         <Stack.Screen name="filter-sheet" options={{ presentation: "modal" }} />
-        <Stack.Screen name="place/[place-id]" options={{ title: "Place Detail" }} />
+        <Stack.Screen name="place/[place-id]" options={{ headerShown: false }} />
         <Stack.Screen name="ai-review/[place-id]" options={{ title: "AI Review Summary" }} />
       </Stack>
     </ThemeProvider>

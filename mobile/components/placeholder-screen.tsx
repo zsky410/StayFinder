@@ -23,8 +23,8 @@ export function PlaceholderScreen({
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.page }}>
       <View
-        pointerEvents="none"
         style={{
+          pointerEvents: "none",
           position: "absolute",
           top: -70,
           right: -30,
@@ -36,8 +36,8 @@ export function PlaceholderScreen({
         }}
       />
       <View
-        pointerEvents="none"
         style={{
+          pointerEvents: "none",
           position: "absolute",
           top: 120,
           left: -60,

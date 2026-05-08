@@ -36,6 +36,7 @@ function TabIcon({
 
 export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const activeRouteName = state.routes[state.index]?.name;
 
   return (
     <View
@@ -62,7 +63,7 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
             return null;
           }
 
-          const isFocused = state.index === index;
+          const isFocused = route.name === activeRouteName || (activeRouteName === "results" && route.name === "home");
           const descriptor = descriptors[route.key];
 
           const onPress = () => {
