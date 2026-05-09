@@ -22,12 +22,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="map"
-        options={{
-          title: "Bản đồ",
-        }}
-      />
-      <Tabs.Screen
         name="chat"
         options={{
           title: "Chat AI",

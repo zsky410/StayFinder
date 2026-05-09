@@ -61,6 +61,34 @@ function makeParamBag() {
   };
 }
 
+const BLOCKED_IMAGE_URL_MARKERS = [
+  "streetviewpixels-pa.googleapis.com",
+  "/gps-cs-s/",
+  "/geougc-cs/",
+];
+
+function isLikelyUsableImageUrl(value) {
+  const cleaned = String(value || "").trim();
+  if (!cleaned) {
+    return false;
+  }
+
+  if (!/^https?:\/\//i.test(cleaned)) {
+    return false;
+  }
+
+  return !BLOCKED_IMAGE_URL_MARKERS.some((marker) => cleaned.includes(marker));
+}
+
+function normalizePublicImageUrls(values) {
+  return uniqueStrings(values || []).filter((value) => isLikelyUsableImageUrl(value));
+}
+
+function pickBestPublicImageUrl(values) {
+  const normalized = normalizePublicImageUrls(values);
+  return normalized[0] || null;
+}
+
 function cleanupAdminJobs() {
   const now = Date.now();
   for (const [jobId, job] of adminJobs.entries()) {
@@ -150,6 +178,8 @@ async function handleAdminJobRequest(req, res, type, runner, validator = null) {
 }
 
 function mapPlaceSummaryRow(row) {
+  const coverImage = pickBestPublicImageUrl([row.cover_image]);
+
   return {
     id: row.id,
     place_id: row.place_id,
@@ -162,7 +192,8 @@ function mapPlaceSummaryRow(row) {
     lng: coerceRowNumber(row.lng),
     rating: coerceRowNumber(row.rating),
     reviews_count: row.reviews_count === null ? null : Number(row.reviews_count),
-    cover_image: row.cover_image,
+    price_text: row.price_text,
+    cover_image: coverImage,
     amenities_preview: row.amenities_preview || [],
     nearest_landmarks: row.nearest_landmarks || [],
     requested_landmark_distance_m:
@@ -254,7 +285,7 @@ function buildPlaceOrderSql(sort, landmarkRef) {
   }
 }
 
-async function listPlaces(filters, { mapMode = false, includeBatchKey = false } = {}) {
+async function listPlaces(filters, { includeBatchKey = false } = {}) {
   const context = buildPlaceFilterContext(filters);
   const requestedDistanceSql = context.landmarkRef
     ? `(
@@ -294,15 +325,31 @@ async function listPlaces(filters, { mapMode = false, includeBatchKey = false } 
         p.lng,
         p.rating,
         p.reviews_count,
+        p.price_text,
         COALESCE(
-          p.image_url,
           (
             SELECT pi.image_url
             FROM place_images pi
             WHERE pi.place_id = p.id
-            ORDER BY pi.sort_order ASC, pi.id ASC
+            ORDER BY
+              CASE
+                WHEN pi.image_url ILIKE '%/p/%' THEN 0
+                WHEN pi.image_url ILIKE '%streetviewpixels-pa.googleapis.com%' THEN 3
+                WHEN pi.image_url ILIKE '%/gps-cs-s/%' THEN 3
+                WHEN pi.image_url ILIKE '%/geougc-cs/%' THEN 3
+                ELSE 1
+              END,
+              pi.sort_order ASC,
+              pi.id ASC
             LIMIT 1
-          )
+          ),
+          CASE
+            WHEN COALESCE(p.image_url, '') = '' THEN NULL
+            WHEN p.image_url ILIKE '%streetviewpixels-pa.googleapis.com%' THEN NULL
+            WHEN p.image_url ILIKE '%/gps-cs-s/%' THEN NULL
+            WHEN p.image_url ILIKE '%/geougc-cs/%' THEN NULL
+            ELSE p.image_url
+          END
         ) AS cover_image,
         ARRAY(
           SELECT a.label
@@ -358,24 +405,6 @@ async function listPlaces(filters, { mapMode = false, includeBatchKey = false } 
     }
     return mapped;
   });
-
-  if (mapMode) {
-    const bounds = items.reduce(
-      (acc, item) => {
-        if (item.lat === null || item.lng === null) {
-          return acc;
-        }
-        acc.min_lat = acc.min_lat === null ? item.lat : Math.min(acc.min_lat, item.lat);
-        acc.max_lat = acc.max_lat === null ? item.lat : Math.max(acc.max_lat, item.lat);
-        acc.min_lng = acc.min_lng === null ? item.lng : Math.min(acc.min_lng, item.lng);
-        acc.max_lng = acc.max_lng === null ? item.lng : Math.max(acc.max_lng, item.lng);
-        return acc;
-      },
-      { min_lat: null, max_lat: null, min_lng: null, max_lng: null },
-    );
-
-    return { total, items, bounds };
-  }
 
   return {
     total,
@@ -441,7 +470,8 @@ async function getPlaceDetail(identifier) {
                 'review_text', sample.review_text,
                 'text_translated', sample.text_translated,
                 'likes_count', sample.likes_count,
-                'published_at', sample.published_at
+                'published_at', sample.published_at,
+                'images', sample.review_images
               )
               ORDER BY sample.likes_count DESC NULLS LAST, sample.published_at DESC NULLS LAST
             )
@@ -451,7 +481,8 @@ async function getPlaceDetail(identifier) {
                 r.review_text,
                 r.text_translated,
                 r.likes_count,
-                r.published_at
+                r.published_at,
+                COALESCE(r.payload -> 'reviewImageUrls', '[]'::jsonb) AS review_images
               FROM reviews r
               WHERE r.place_id = p.id
               ORDER BY r.likes_count DESC NULLS LAST, r.published_at DESC NULLS LAST
@@ -502,6 +533,9 @@ async function getPlaceDetail(identifier) {
     throw notFound("Place not found.");
   }
 
+  const gallery = normalizePublicImageUrls(row.gallery || []);
+  const coverImage = pickBestPublicImageUrl([row.cover_image, ...gallery]);
+
   return {
     id: row.id,
     place_id: row.place_id,
@@ -518,8 +552,8 @@ async function getPlaceDetail(identifier) {
     lng: coerceRowNumber(row.lng),
     rating: coerceRowNumber(row.rating),
     reviews_count: row.reviews_count === null ? null : Number(row.reviews_count),
-    cover_image: row.cover_image || null,
-    gallery: row.gallery || [],
+    cover_image: coverImage,
+    gallery: uniqueStrings([coverImage, ...gallery].filter(Boolean)),
     phone: row.phone,
     website: row.website,
     opening_hours: row.opening_hours,
@@ -527,7 +561,12 @@ async function getPlaceDetail(identifier) {
     price_text: row.price_text,
     hotel_description: row.hotel_description,
     amenities: row.amenities || [],
-    reviews_sample: row.reviews_sample || [],
+    reviews_sample: Array.isArray(row.reviews_sample)
+      ? row.reviews_sample.map((review) => ({
+          ...review,
+          images: normalizePublicImageUrls(Array.isArray(review?.images) ? review.images : []),
+        }))
+      : [],
     landmark_metrics: row.landmark_metrics || [],
     ai_review_summary: row.ai_review_summary || null,
   };
@@ -1669,40 +1708,6 @@ app.get(
       limit,
       offset,
     });
-
-    res.json(payload);
-  }),
-);
-
-app.get(
-  "/places/map",
-  asyncRoute(async (req, res) => {
-    const limit = parseInteger(req.query.limit, config.publicDefaultMapSize, {
-      min: 1,
-      max: config.publicMaxMapSize,
-    });
-    const payload = await listPlaces(
-      {
-        q: String(req.query.q || "").trim(),
-        typeSlugs: parseStringList(req.query.type || req.query.type_slug),
-        districts: parseStringList(req.query.district),
-        neighborhoods: parseStringList(req.query.neighborhood),
-        amenityLabels: parseStringList(req.query.amenity || req.query.amenities),
-        landmarkSlugs: parseStringList(req.query.landmark || req.query.landmark_slug),
-        minRating:
-          req.query.min_rating === undefined
-            ? null
-            : parseFloatNumber(req.query.min_rating, null),
-        maxDistanceM:
-          req.query.max_distance_m === undefined
-            ? null
-            : parseInteger(req.query.max_distance_m, null, { min: 0 }),
-        sort: String(req.query.sort || "rating_desc"),
-        limit,
-        offset: 0,
-      },
-      { mapMode: true },
-    );
 
     res.json(payload);
   }),

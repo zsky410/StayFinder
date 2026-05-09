@@ -56,59 +56,6 @@ export const resultCards = [
   },
 ] as const;
 
-export const mapListings = [
-  {
-    id: "demo-son-tra-villa",
-    detailId: "demo-son-tra-villa" as const,
-    title: "Villa Sơn Trà View",
-    district: "Bán đảo Sơn Trà",
-    rating: "4.8",
-    price: "680.000đ",
-    priceShort: "680k",
-    latitude: 16.0108,
-    longitude: 108.155,
-    image: sharedAssets.oceanVilla,
-  },
-  {
-    id: "demo-bien-xanh-map",
-    detailId: "demo-bien-xanh" as const,
-    title: "Sea Breeze House",
-    district: "Biển Mỹ Khê",
-    rating: "4.8",
-    price: "450.000đ",
-    priceShort: "450k",
-    latitude: 16.074,
-    longitude: 108.183,
-    image: sharedAssets.coralStudio,
-  },
-  {
-    id: "ocean-view-villa-map",
-    detailId: "ocean-view-villa" as const,
-    title: "Ocean View Villa",
-    district: "Ngũ Hành Sơn",
-    rating: "4.9",
-    price: "1.200.000đ",
-    priceShort: "1.2M",
-    latitude: 15.998,
-    longitude: 108.236,
-    image: sharedAssets.sunriseBoutique,
-  },
-] as const;
-
-export const mapOverlayPoints = {
-  cluster: {
-    latitude: 16.061,
-    longitude: 108.214,
-    label: "12",
-  },
-  focus: {
-    latitude: 16.03,
-    longitude: 108.202,
-  },
-} as const;
-
-export const defaultMapListingId = "demo-son-tra-villa" as const;
-
 export const aiChatDemo = {
   headerTitle: "AI Tư vấn Đà Nẵng",
   statusText: "Đang hoạt động",

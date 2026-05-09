@@ -63,6 +63,4 @@ export const config = {
   ),
   publicDefaultPageSize: parseInteger(process.env.PUBLIC_DEFAULT_PAGE_SIZE, 20),
   publicMaxPageSize: parseInteger(process.env.PUBLIC_MAX_PAGE_SIZE, 50),
-  publicDefaultMapSize: parseInteger(process.env.PUBLIC_DEFAULT_MAP_SIZE, 200),
-  publicMaxMapSize: parseInteger(process.env.PUBLIC_MAX_MAP_SIZE, 500),
 };

@@ -1,78 +1,60 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
 import {
-  Image,
+  ActivityIndicator,
   ImageBackground,
   type ImageSourcePropType,
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/brand-header";
+import { SafeImage } from "@/components/safe-image";
 import { theme } from "@/constants/theme";
+import { fetchPlaces, type PlaceSummary } from "@/lib/stayfinder";
+import {
+  buildDistanceLabel,
+  formatLocation,
+  formatPriceText,
+  formatRating,
+  getImageSource,
+} from "@/lib/stayfinder-ui";
 
 const heroImage = require("../../assets/home/hero.jpg");
+const featuredFallbackImages = [
+  require("../../assets/home/featured-beach.jpg"),
+  require("../../assets/home/featured-villa.jpg"),
+] as const;
+const nearbyFallbackImages = [
+  require("../../assets/home/nearby-hotel.jpg"),
+  require("../../assets/home/nearby-homestay.jpg"),
+  require("../../assets/home/featured-beach.jpg"),
+] as const;
 
 const quickFilters = [
   {
     label: "Khách sạn",
     icon: "bed-king-outline" as const,
-    selected: true,
+    typeSlug: "hotel",
   },
   {
     label: "Homestay",
     icon: "home-city-outline" as const,
-    selected: false,
+    typeSlug: "homestay",
   },
   {
     label: "Nhà nghỉ",
     icon: "bed-outline" as const,
-    selected: false,
+    typeSlug: "nha-nghi",
   },
-];
-
-const featuredPlaces = [
-  {
-    id: "demo-bien-xanh",
-    title: "Homestay Biển Xanh",
-    location: "Sơn Trà, Đà Nẵng",
-    price: "450.000đ",
-    rating: "4.8",
-    image: require("../../assets/home/featured-beach.jpg"),
-  },
-  {
-    id: "demo-son-tra-villa",
-    title: "Villa Sơn Trà",
-    location: "Sơn Trà, Đà Nẵng",
-    price: "1.200.000đ",
-    rating: "4.9",
-    image: require("../../assets/home/featured-villa.jpg"),
-  },
-];
-
-const nearbyPlaces = [
-  {
-    id: "demo-azure-boutique",
-    title: "Azure Boutique Hotel",
-    distance: "Cách 1.2km",
-    price: "650.000đ",
-    rating: "4.7",
-    image: require("../../assets/home/nearby-hotel.jpg"),
-  },
-  {
-    id: "demo-mykhe-sunrise",
-    title: "MyKhe Sunrise Homestay",
-    distance: "Cách 2.5km",
-    price: "350.000đ",
-    rating: "4.9",
-    image: require("../../assets/home/nearby-homestay.jpg"),
-  },
-];
+] as const;
 
 function SectionHeader({ title, actionLabel }: { title: string; actionLabel?: string }) {
   return (
@@ -89,7 +71,15 @@ function SectionHeader({ title, actionLabel }: { title: string; actionLabel?: st
   );
 }
 
-function SearchBar() {
+function SearchBar({
+  value,
+  onChangeText,
+  onSubmit,
+}: {
+  value: string;
+  onChangeText: (nextValue: string) => void;
+  onSubmit: () => void;
+}) {
   return (
     <View
       style={{
@@ -104,21 +94,25 @@ function SearchBar() {
         paddingLeft: 18,
       }}
     >
-      <Pressable
-        onPress={() => router.push("/results")}
+      <Feather color={theme.colors.muted} name="search" size={22} />
+
+      <TextInput
+        onChangeText={onChangeText}
+        onSubmitEditing={onSubmit}
+        placeholder="Bạn muốn tìm chỗ ở khu nào?"
+        placeholderTextColor="#C2C7DA"
+        returnKeyType="search"
+        selectionColor={theme.colors.accent}
         style={{
-          alignItems: "center",
+          color: theme.colors.ink,
           flex: 1,
-          flexDirection: "row",
-          gap: 14,
+          fontSize: 17,
+          fontWeight: "500",
           minHeight: 62,
+          paddingHorizontal: 14,
         }}
-      >
-        <Feather color={theme.colors.muted} name="search" size={24} />
-        <Text selectable style={{ color: "#C2C7DA", fontSize: 17, fontWeight: "500" }}>
-          Bạn muốn đến đâu?
-        </Text>
-      </Pressable>
+        value={value}
+      />
 
       <Pressable
         onPress={() => router.push("/filter-sheet")}
@@ -139,19 +133,19 @@ function SearchBar() {
 function QuickFilterChip({
   label,
   icon,
-  selected,
+  onPress,
 }: {
   label: string;
   icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
-  selected: boolean;
+  onPress: () => void;
 }) {
   return (
     <Pressable
-      onPress={() => router.push("/results")}
+      onPress={onPress}
       style={({ pressed }) => ({
         alignItems: "center",
-        backgroundColor: selected ? "#F7F9FF" : theme.colors.chipBackground,
-        borderColor: selected ? theme.colors.accent : "transparent",
+        backgroundColor: theme.colors.chipBackground,
+        borderColor: "transparent",
         borderRadius: 14,
         borderWidth: 1.5,
         flex: 1,
@@ -163,13 +157,13 @@ function QuickFilterChip({
         paddingHorizontal: 12,
       })}
     >
-      <MaterialCommunityIcons color={selected ? theme.colors.accent : theme.colors.ink} name={icon} size={18} />
+      <MaterialCommunityIcons color={theme.colors.ink} name={icon} size={18} />
       <Text
         selectable
         style={{
-          color: selected ? theme.colors.accent : theme.colors.ink,
+          color: theme.colors.ink,
           fontSize: 15,
-          fontWeight: selected ? "600" : "500",
+          fontWeight: "500",
         }}
       >
         {label}
@@ -180,24 +174,21 @@ function QuickFilterChip({
 
 function FeaturedCard({
   width,
-  title,
-  location,
-  price,
-  rating,
-  image,
-  placeId,
+  place,
+  fallbackImage,
 }: {
   width: number;
-  title: string;
-  location: string;
-  price: string;
-  rating: string;
-  image: ImageSourcePropType;
-  placeId: string;
+  place: PlaceSummary;
+  fallbackImage: ImageSourcePropType;
 }) {
   return (
     <Pressable
-      onPress={() => router.push({ pathname: "/place/[place-id]", params: { "place-id": placeId } })}
+      onPress={() =>
+        router.push({
+          pathname: "/place/[place-id]",
+          params: { "place-id": place.place_id },
+        })
+      }
       style={({ pressed }) => ({
         borderRadius: 22,
         borderCurve: "continuous",
@@ -217,7 +208,11 @@ function FeaturedCard({
       >
         <View style={{ borderRadius: 22, borderCurve: "continuous", overflow: "hidden" }}>
           <View>
-            <Image source={image} style={{ height: 186, width: "100%" }} />
+            <SafeImage
+              fallbackSource={fallbackImage}
+              source={getImageSource(place.cover_image, fallbackImage)}
+              style={{ height: 186, width: "100%" }}
+            />
             <View
               style={{
                 alignItems: "center",
@@ -235,27 +230,37 @@ function FeaturedCard({
             >
               <Feather color={theme.colors.sun} name="star" size={14} />
               <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "600" }}>
-                {rating}
+                {formatRating(place.rating)}
               </Text>
             </View>
           </View>
 
-          <View style={{ gap: 7, paddingHorizontal: 12, paddingBottom: 14, paddingTop: 12 }}>
-            <Text selectable numberOfLines={2} style={{ color: theme.colors.ink, fontSize: 17, fontWeight: "700" }}>
-              {title}
+          <View style={{ gap: 7, minHeight: 122, paddingHorizontal: 12, paddingBottom: 14, paddingTop: 12 }}>
+            <Text
+              selectable
+              numberOfLines={2}
+              style={{
+                color: theme.colors.ink,
+                fontSize: 17,
+                fontWeight: "700",
+                lineHeight: 24,
+                minHeight: 48,
+              }}
+            >
+              {place.title}
             </Text>
             <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
               <Feather color={theme.colors.muted} name="map-pin" size={15} />
-              <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "500" }}>
-                {location}
+              <Text selectable numberOfLines={1} style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "500" }}>
+                {formatLocation(place)}
               </Text>
             </View>
-            <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 2 }}>
+            <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 4 }}>
               <Text selectable style={{ color: theme.colors.sun, fontSize: 18, fontWeight: "700" }}>
-                {price}
+                {formatPriceText(null)}
               </Text>
               <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "500" }}>
-                /đêm
+                giá cập nhật sau
               </Text>
             </View>
           </View>
@@ -266,23 +271,20 @@ function FeaturedCard({
 }
 
 function NearbyCard({
-  title,
-  distance,
-  price,
-  rating,
-  image,
-  placeId,
+  place,
+  fallbackImage,
 }: {
-  title: string;
-  distance: string;
-  price: string;
-  rating: string;
-  image: ImageSourcePropType;
-  placeId: string;
+  place: PlaceSummary;
+  fallbackImage: ImageSourcePropType;
 }) {
   return (
     <Pressable
-      onPress={() => router.push({ pathname: "/place/[place-id]", params: { "place-id": placeId } })}
+      onPress={() =>
+        router.push({
+          pathname: "/place/[place-id]",
+          params: { "place-id": place.place_id },
+        })
+      }
       style={({ pressed }) => ({
         backgroundColor: theme.colors.surface,
         borderRadius: 20,
@@ -295,8 +297,9 @@ function NearbyCard({
         boxShadow: "0 12px 28px rgba(20, 27, 52, 0.08)",
       })}
     >
-      <Image
-        source={image}
+      <SafeImage
+        fallbackSource={fallbackImage}
+        source={getImageSource(place.cover_image, fallbackImage)}
         style={{
           borderRadius: 14,
           height: 104,
@@ -306,13 +309,13 @@ function NearbyCard({
 
       <View style={{ flex: 1, gap: 8, justifyContent: "center" }}>
         <View style={{ alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between" }}>
-            <Text
-              selectable
-              numberOfLines={2}
-              style={{ color: theme.colors.ink, flex: 1, fontSize: 18, fontWeight: "700", lineHeight: 23 }}
-            >
-              {title}
-            </Text>
+          <Text
+            selectable
+            numberOfLines={2}
+            style={{ color: theme.colors.ink, flex: 1, fontSize: 18, fontWeight: "700", lineHeight: 23 }}
+          >
+            {place.title}
+          </Text>
           <View
             style={{
               alignItems: "center",
@@ -328,7 +331,7 @@ function NearbyCard({
           >
             <Feather color={theme.colors.sun} name="star" size={12} />
             <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "600" }}>
-              {rating}
+              {formatRating(place.rating)}
             </Text>
           </View>
         </View>
@@ -336,16 +339,14 @@ function NearbyCard({
         <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
           <Feather color={theme.colors.muted} name="map" size={14} />
           <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "500" }}>
-            {distance}
+            {buildDistanceLabel(place)}
           </Text>
         </View>
 
-        <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 2 }}>
-          <Text selectable style={{ color: theme.colors.sun, fontSize: 18, fontWeight: "700" }}>
-            {price}
-          </Text>
-          <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "500" }}>
-            /đêm
+        <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+          <Feather color={theme.colors.muted} name="map-pin" size={14} />
+          <Text selectable numberOfLines={1} style={{ color: theme.colors.muted, flex: 1, fontSize: 13, fontWeight: "500" }}>
+            {formatLocation(place)}
           </Text>
         </View>
       </View>
@@ -353,10 +354,93 @@ function NearbyCard({
   );
 }
 
+function SectionLoadingCard() {
+  return (
+    <View
+      style={{
+        alignItems: "center",
+        backgroundColor: theme.colors.surface,
+        borderRadius: 22,
+        borderCurve: "continuous",
+        gap: 12,
+        justifyContent: "center",
+        minHeight: 144,
+        padding: 20,
+      }}
+    >
+      <ActivityIndicator color={theme.colors.accent} />
+      <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "500" }}>
+        Đang tải dữ liệu thật từ StayFinder...
+      </Text>
+    </View>
+  );
+}
+
 export default function HomeTabRoute() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const featuredCardWidth = Math.min(width * 0.62, 250);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [featuredPlaces, setFeaturedPlaces] = useState<PlaceSummary[]>([]);
+  const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadHomeData() {
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const [featuredResponse, nearbyResponse] = await Promise.all([
+          fetchPlaces({ limit: 6, sort: "rating_desc" }),
+          fetchPlaces({
+            landmarkSlugs: ["dragon-bridge"],
+            limit: 3,
+            sort: "distance_asc",
+          }),
+        ]);
+
+        if (!isActive) {
+          return;
+        }
+
+        setFeaturedPlaces(featuredResponse.items);
+        setNearbyPlaces(nearbyResponse.items);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        setErrorMessage(error instanceof Error ? error.message : "Không tải được dữ liệu từ backend.");
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadHomeData().catch(() => undefined);
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  function openResults(params: Record<string, string>) {
+    router.push({
+      pathname: "/results",
+      params,
+    });
+  }
+
+  function submitSearch() {
+    const q = searchQuery.trim();
+    openResults(q ? { q } : {});
+  }
 
   return (
     <View style={{ backgroundColor: theme.colors.page, flex: 1 }}>
@@ -371,17 +455,23 @@ export default function HomeTabRoute() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <BrandHeader bellSize={24} logoHeight={46} logoWidth={192} onPressBell={() => router.push("/chat")} showNotificationDot />
+        <BrandHeader
+          bellSize={24}
+          logoHeight={46}
+          logoWidth={192}
+          onPressBell={() => router.push("/chat")}
+          showNotificationDot
+        />
 
         <View style={{ gap: 10 }}>
           <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "600", letterSpacing: 0.7 }}>
             TÌM KIẾM
           </Text>
-          <SearchBar />
+          <SearchBar onChangeText={setSearchQuery} onSubmit={submitSearch} value={searchQuery} />
         </View>
 
         <Pressable
-          onPress={() => router.push("/results")}
+          onPress={() => openResults({})}
           style={({ pressed }) => ({
             borderRadius: 24,
             borderCurve: "continuous",
@@ -417,6 +507,11 @@ export default function HomeTabRoute() {
               >
                 Tìm chỗ lưu trú{"\n"}tại Đà Nẵng
               </Text>
+              <Text selectable style={{ color: "rgba(255,255,255,0.92)", fontSize: 14, lineHeight: 22 }}>
+                {featuredPlaces.length
+                  ? `Đang có ${featuredPlaces.length}+ gợi ý nổi bật lấy trực tiếp từ dataset thật.`
+                  : "Khám phá dữ liệu thật từ backend StayFinder thay cho mock demo."}
+              </Text>
             </View>
           </ImageBackground>
         </Pressable>
@@ -427,50 +522,93 @@ export default function HomeTabRoute() {
           </Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
             {quickFilters.map((item) => (
-              <QuickFilterChip icon={item.icon} key={item.label} label={item.label} selected={item.selected} />
+              <QuickFilterChip
+                icon={item.icon}
+                key={item.label}
+                label={item.label}
+                onPress={() => openResults({ type: item.typeSlug })}
+              />
             ))}
           </View>
         </View>
 
+        {errorMessage ? (
+          <View
+            style={{
+              backgroundColor: "#FFF4F4",
+              borderColor: "#F0CECE",
+              borderRadius: 20,
+              borderWidth: 1,
+              gap: 10,
+              padding: 18,
+            }}
+          >
+            <Text selectable style={{ color: theme.colors.coral, fontSize: 15, fontWeight: "700" }}>
+              Không tải được dữ liệu trang chủ
+            </Text>
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 14, lineHeight: 22 }}>
+              {errorMessage}
+            </Text>
+            <Pressable
+              onPress={() => {
+                setIsLoading(true);
+                setErrorMessage(null);
+                setFeaturedPlaces([]);
+                setNearbyPlaces([]);
+              }}
+              style={({ pressed }) => ({
+                alignSelf: "flex-start",
+                backgroundColor: theme.colors.coral,
+                borderRadius: 12,
+                opacity: pressed ? 0.8 : 1,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+              })}
+            >
+              <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>Thử lại</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={{ gap: 14 }}>
-          <Pressable onPress={() => router.push("/results")}>
+          <Pressable onPress={() => openResults({ sort: "rating_desc" })}>
             <SectionHeader actionLabel="XEM TẤT CẢ" title="Nổi bật" />
           </Pressable>
-          <ScrollView
-            contentContainerStyle={{ paddingBottom: 10, paddingLeft: 2, paddingRight: 18, paddingTop: 2 }}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-          >
-            {featuredPlaces.map((place) => (
-              <FeaturedCard
-                image={place.image}
-                key={place.id}
-                location={place.location}
-                placeId={place.id}
-                price={place.price}
-                rating={place.rating}
-                title={place.title}
-                width={featuredCardWidth}
-              />
-            ))}
-          </ScrollView>
+          {isLoading ? (
+            <SectionLoadingCard />
+          ) : (
+            <ScrollView
+              contentContainerStyle={{ paddingBottom: 10, paddingLeft: 2, paddingRight: 18, paddingTop: 2 }}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+            >
+              {featuredPlaces.map((place, index) => (
+                <FeaturedCard
+                  fallbackImage={featuredFallbackImages[index % featuredFallbackImages.length]}
+                  key={place.id}
+                  place={place}
+                  width={featuredCardWidth}
+                />
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         <View style={{ gap: 14 }}>
-          <SectionHeader title="Gần bạn" />
-          <View style={{ gap: 16 }}>
-            {nearbyPlaces.map((place) => (
-              <NearbyCard
-                distance={place.distance}
-                image={place.image}
-                key={place.id}
-                placeId={place.id}
-                price={place.price}
-                rating={place.rating}
-                title={place.title}
-              />
-            ))}
-          </View>
+          <SectionHeader title="Gần Cầu Rồng" />
+          {isLoading ? (
+            <SectionLoadingCard />
+          ) : (
+            <View style={{ gap: 16 }}>
+              {nearbyPlaces.map((place, index) => (
+                <NearbyCard
+                  fallbackImage={nearbyFallbackImages[index % nearbyFallbackImages.length]}
+                  key={place.id}
+                  place={place}
+                />
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>

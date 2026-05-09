@@ -7,7 +7,6 @@ import { theme } from "@/constants/theme";
 
 const TAB_CONFIG = {
   home: { label: "Trang chủ", kind: "home" },
-  map: { label: "Bản đồ", kind: "map" },
   chat: { label: "AI Chat", kind: "chat" },
   saved: { label: "Đã lưu", kind: "saved" },
   profile: { label: "Cá nhân", kind: "profile" },
@@ -26,7 +25,6 @@ function TabIcon({
 
   const iconByKind = {
     home: "home",
-    map: "map",
     saved: "heart",
     profile: "user",
   } as const;
