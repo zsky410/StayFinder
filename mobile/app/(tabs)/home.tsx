@@ -74,10 +74,12 @@ function SectionHeader({ title, actionLabel }: { title: string; actionLabel?: st
 function SearchBar({
   value,
   onChangeText,
+  onOpenFilters,
   onSubmit,
 }: {
   value: string;
   onChangeText: (nextValue: string) => void;
+  onOpenFilters: () => void;
   onSubmit: () => void;
 }) {
   return (
@@ -115,7 +117,7 @@ function SearchBar({
       />
 
       <Pressable
-        onPress={() => router.push("/filter-sheet")}
+        onPress={onOpenFilters}
         style={({ pressed }) => ({
           alignItems: "center",
           justifyContent: "center",
@@ -396,11 +398,11 @@ export default function HomeTabRoute() {
 
       try {
         const [featuredResponse, nearbyResponse] = await Promise.all([
-          fetchPlaces({ limit: 6, sort: "rating_desc" }),
+          fetchPlaces({ limit: 6, sort: "random" }),
           fetchPlaces({
             landmarkSlugs: ["dragon-bridge"],
             limit: 3,
-            sort: "distance_asc",
+            sort: "random",
           }),
         ]);
 
@@ -467,7 +469,12 @@ export default function HomeTabRoute() {
           <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "600", letterSpacing: 0.7 }}>
             TÌM KIẾM
           </Text>
-          <SearchBar onChangeText={setSearchQuery} onSubmit={submitSearch} value={searchQuery} />
+          <SearchBar
+            onChangeText={setSearchQuery}
+            onOpenFilters={submitSearch}
+            onSubmit={submitSearch}
+            value={searchQuery}
+          />
         </View>
 
         <Pressable

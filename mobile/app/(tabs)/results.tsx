@@ -19,10 +19,10 @@ import {
   fetchFiltersMeta,
   fetchPlaces,
   type FiltersMeta,
+  type PlacesQuery,
   type PlaceSummary,
 } from "@/lib/stayfinder";
 import {
-  buildDistanceLabel,
   derivePlaceTags,
   formatLocation,
   formatRating,
@@ -35,6 +35,7 @@ const resultFallbackImages = [
   require("../../assets/results/sunrise-boutique.jpg"),
   require("../../assets/results/coral-studio.jpg"),
 ] as const;
+const RESULT_PAGE_SIZE = 50;
 
 type SortOption = "rating_desc" | "reviews_desc" | "distance_asc" | "title_asc";
 type ResultsFiltersState = {
@@ -165,7 +166,7 @@ function ResultCard({
   item: PlaceSummary;
   fallbackImage: typeof resultFallbackImages[number];
 }) {
-  const chips = derivePlaceTags(item);
+  const chips = derivePlaceTags(item).slice(0, 2);
 
   return (
     <Pressable
@@ -196,7 +197,7 @@ function ResultCard({
           <SafeImage
             fallbackSource={fallbackImage}
             source={getImageSource(item.cover_image, fallbackImage)}
-            style={{ height: 210, width: "100%" }}
+            style={{ height: 138, width: "100%" }}
           />
 
           <View
@@ -208,16 +209,16 @@ function ResultCard({
               borderCurve: "continuous",
               borderWidth: 1,
               flexDirection: "row",
-              gap: 5,
-              paddingHorizontal: 9,
-              paddingVertical: 6,
+              gap: 4,
+              paddingHorizontal: 8,
+              paddingVertical: 5,
               position: "absolute",
-              right: 10,
-              top: 10,
+              right: 8,
+              top: 8,
             }}
           >
-            <Feather color={theme.colors.sun} name="star" size={12} />
-            <Text selectable style={{ color: theme.colors.ink, fontSize: 12, fontWeight: "600" }}>
+            <Feather color={theme.colors.sun} name="star" size={11} />
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 11, fontWeight: "600" }}>
               {formatRating(item.rating)}
             </Text>
           </View>
@@ -227,41 +228,53 @@ function ResultCard({
               alignItems: "center",
               backgroundColor: "rgba(255,255,255,0.92)",
               borderRadius: 999,
-              bottom: 10,
-              height: 32,
+              bottom: 8,
+              height: 30,
               justifyContent: "center",
               position: "absolute",
-              right: 10,
-              width: 32,
+              right: 8,
+              width: 30,
             }}
           >
-            <Feather color={theme.colors.muted} name="heart" size={16} />
+            <Feather color={theme.colors.muted} name="heart" size={15} />
           </Pressable>
         </View>
 
-        <View style={{ gap: 8, paddingHorizontal: 14, paddingBottom: 14, paddingTop: 14 }}>
-          <Text selectable style={{ color: theme.colors.ink, fontSize: 18, fontWeight: "700" }}>
+        <View style={{ gap: 8, paddingHorizontal: 12, paddingBottom: 12, paddingTop: 12 }}>
+          <Text
+            numberOfLines={2}
+            selectable
+            style={{
+              color: theme.colors.ink,
+              fontSize: 15,
+              fontWeight: "700",
+              lineHeight: 21,
+              minHeight: 42,
+            }}
+          >
             {item.title}
           </Text>
           <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
-            <Feather color={theme.colors.muted} name="map-pin" size={13} />
-            <Text selectable numberOfLines={1} style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "500" }}>
+            <Feather color={theme.colors.muted} name="map-pin" size={12} />
+            <Text selectable numberOfLines={1} style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "500" }}>
               {formatLocation(item)}
             </Text>
           </View>
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, minHeight: 29 }}>
             {chips.map((chip) => (
               <View
                 key={chip}
                 style={{
                   backgroundColor: "#E8F0FF",
                   borderRadius: 6,
-                  paddingHorizontal: 8,
+                  paddingHorizontal: 7,
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: theme.colors.ink, fontSize: 10, fontWeight: "600" }}>{chip}</Text>
+                <Text numberOfLines={1} style={{ color: theme.colors.ink, fontSize: 9.5, fontWeight: "600" }}>
+                  {chip}
+                </Text>
               </View>
             ))}
           </View>
@@ -274,18 +287,13 @@ function ResultCard({
               flexDirection: "row",
               justifyContent: "space-between",
               marginTop: 4,
-              paddingTop: 12,
+              paddingTop: 10,
             }}
           >
-            <View style={{ gap: 3 }}>
-              <Text selectable style={{ color: "#8C93A8", fontSize: 12, fontWeight: "500" }}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text numberOfLines={1} selectable style={{ color: "#8C93A8", fontSize: 11, fontWeight: "500" }}>
                 {formatReviewCount(item.reviews_count)}
               </Text>
-              <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 2 }}>
-                <Text selectable style={{ color: theme.colors.sun, fontSize: 16, fontWeight: "700" }}>
-                  {buildDistanceLabel(item)}
-                </Text>
-              </View>
             </View>
 
             <Pressable
@@ -300,11 +308,11 @@ function ResultCard({
                 borderRadius: 8,
                 borderCurve: "continuous",
                 opacity: pressed ? 0.85 : 1,
-                paddingHorizontal: 14,
-                paddingVertical: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 7,
               })}
             >
-              <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "600" }}>Xem chi tiết</Text>
+              <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "600" }}>Chi tiết</Text>
             </Pressable>
           </View>
         </View>
@@ -319,6 +327,19 @@ const sortOptions: Array<{ label: string; value: SortOption }> = [
   { label: "Gần nhất", value: "distance_asc" },
   { label: "Tên A-Z", value: "title_asc" },
 ];
+
+function buildPlacesQuery(filters: ResultsFiltersState, page: number): PlacesQuery {
+  return {
+    q: filters.queryText.trim() || undefined,
+    typeSlugs: filters.selectedType ? [filters.selectedType] : undefined,
+    districts: filters.selectedDistrict ? [filters.selectedDistrict] : undefined,
+    amenityLabels: filters.selectedAmenity ? [filters.selectedAmenity] : undefined,
+    landmarkSlugs: filters.selectedLandmark ? [filters.selectedLandmark] : undefined,
+    sort: filters.sort,
+    limit: RESULT_PAGE_SIZE,
+    page,
+  };
+}
 
 export default function ResultsRoute() {
   const insets = useSafeAreaInsets();
@@ -356,9 +377,21 @@ export default function ResultsRoute() {
   const [meta, setMeta] = useState<FiltersMeta | null>(null);
   const [places, setPlaces] = useState<PlaceSummary[]>([]);
   const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isMetaLoading, setIsMetaLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const hasMorePlaces = places.length < total;
+  const placeRows = useMemo(() => {
+    const rows: PlaceSummary[][] = [];
+
+    for (let index = 0; index < places.length; index += 2) {
+      rows.push(places.slice(index, index + 2));
+    }
+
+    return rows;
+  }, [places]);
 
   useEffect(() => {
     setFilters((current) => (areFiltersEqual(current, paramState) ? current : paramState));
@@ -400,17 +433,12 @@ export default function ResultsRoute() {
     async function loadPlaces() {
       setIsLoading(true);
       setErrorMessage(null);
+      setPlaces([]);
+      setTotal(0);
+      setCurrentPage(1);
 
       try {
-        const payload = await fetchPlaces({
-          q: requestFilters.queryText.trim() || undefined,
-          typeSlugs: requestFilters.selectedType ? [requestFilters.selectedType] : undefined,
-          districts: requestFilters.selectedDistrict ? [requestFilters.selectedDistrict] : undefined,
-          amenityLabels: requestFilters.selectedAmenity ? [requestFilters.selectedAmenity] : undefined,
-          landmarkSlugs: requestFilters.selectedLandmark ? [requestFilters.selectedLandmark] : undefined,
-          sort: requestFilters.sort,
-          limit: 20,
-        });
+        const payload = await fetchPlaces(buildPlacesQuery(requestFilters, 1));
 
         if (!isActive) {
           return;
@@ -418,6 +446,7 @@ export default function ResultsRoute() {
 
         setPlaces(payload.items);
         setTotal(payload.total);
+        setCurrentPage(payload.page);
       } catch (error) {
         if (!isActive) {
           return;
@@ -437,6 +466,30 @@ export default function ResultsRoute() {
       isActive = false;
     };
   }, [requestFilters]);
+
+  async function loadMorePlaces() {
+    if (isLoading || isLoadingMore || !hasMorePlaces) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+    setErrorMessage(null);
+
+    try {
+      const payload = await fetchPlaces(buildPlacesQuery(requestFilters, currentPage + 1));
+      setPlaces((currentPlaces) => {
+        const seen = new Set(currentPlaces.map((place) => place.id));
+        const nextItems = payload.items.filter((place) => !seen.has(place.id));
+        return [...currentPlaces, ...nextItems];
+      });
+      setTotal(payload.total);
+      setCurrentPage(payload.page);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Không tải thêm được kết quả.");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
 
   function applyFilters() {
     setRequestFilters({ ...filters });
@@ -486,7 +539,7 @@ export default function ResultsRoute() {
             <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
               <Feather color={theme.colors.accent} name="sliders" size={17} />
               <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "600" }}>
-                Bộ lọc thật từ backend
+                Tìm kiếm & bộ lọc
               </Text>
             </View>
             <Pressable onPress={resetFilters}>
@@ -652,7 +705,7 @@ export default function ResultsRoute() {
               opacity: pressed ? 0.85 : 1,
             })}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "600" }}>Áp dụng</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "600" }}>Xem kết quả</Text>
           </Pressable>
         </View>
 
@@ -661,6 +714,11 @@ export default function ResultsRoute() {
             <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "700" }}>
               {isLoading ? "Đang tìm..." : `Tìm thấy ${total} địa điểm`}
             </Text>
+            {!isLoading && total > 0 ? (
+              <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "500" }}>
+                Đang hiển thị {places.length}/{total} địa điểm
+              </Text>
+            ) : null}
             {requestFilters.queryText ? (
               <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "500" }}>
                 Kết quả cho: “{requestFilters.queryText}”
@@ -737,13 +795,66 @@ export default function ResultsRoute() {
           </View>
         ) : places.length ? (
           <View style={{ gap: 14 }}>
-            {places.map((item, index) => (
-              <ResultCard
-                fallbackImage={resultFallbackImages[index % resultFallbackImages.length]}
-                item={item}
-                key={item.id}
-              />
+            {placeRows.map((row, rowIndex) => (
+              <View
+                key={`row-${rowIndex}`}
+                style={{
+                  flexDirection: "row",
+                  gap: 14,
+                  justifyContent: "space-between",
+                }}
+              >
+                {row.map((item, itemIndex) => (
+                  <View key={item.id} style={{ width: "48.2%" }}>
+                    <ResultCard
+                      fallbackImage={
+                        resultFallbackImages[(rowIndex * 2 + itemIndex) % resultFallbackImages.length]
+                      }
+                      item={item}
+                    />
+                  </View>
+                ))}
+                {row.length === 1 ? <View style={{ width: "48.2%" }} /> : null}
+              </View>
             ))}
+            {hasMorePlaces ? (
+              <Pressable
+                onPress={loadMorePlaces}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.accent,
+                  borderRadius: 14,
+                  borderCurve: "continuous",
+                  borderWidth: 1,
+                  flexDirection: "row",
+                  gap: 10,
+                  justifyContent: "center",
+                  minHeight: 54,
+                  opacity: pressed || isLoadingMore ? 0.76 : 1,
+                })}
+              >
+                {isLoadingMore ? <ActivityIndicator color={theme.colors.accent} /> : null}
+                <Text selectable style={{ color: theme.colors.accent, fontSize: 15, fontWeight: "700" }}>
+                  {isLoadingMore ? "Đang tải thêm..." : `Tải thêm (${places.length}/${total})`}
+                </Text>
+              </Pressable>
+            ) : (
+              <View
+                style={{
+                  alignItems: "center",
+                  backgroundColor: theme.colors.surfaceMuted,
+                  borderRadius: 14,
+                  borderCurve: "continuous",
+                  paddingHorizontal: 14,
+                  paddingVertical: 13,
+                }}
+              >
+                <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "600" }}>
+                  Đã hiển thị đủ {total} địa điểm
+                </Text>
+              </View>
+            )}
           </View>
         ) : (
           <View

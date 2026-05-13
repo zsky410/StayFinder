@@ -270,6 +270,8 @@ function buildPlaceFilterContext(filters) {
 
 function buildPlaceOrderSql(sort, landmarkRef) {
   switch (sort) {
+    case "random":
+      return "random()";
     case "reviews_desc":
       return "p.reviews_count DESC NULLS LAST, p.rating DESC NULLS LAST, p.title ASC";
     case "title_asc":
@@ -564,7 +566,7 @@ async function getPlaceDetail(identifier) {
     reviews_sample: Array.isArray(row.reviews_sample)
       ? row.reviews_sample.map((review) => ({
           ...review,
-          images: normalizePublicImageUrls(Array.isArray(review?.images) ? review.images : []),
+          images: uniqueStrings(Array.isArray(review?.images) ? review.images : []),
         }))
       : [],
     landmark_metrics: row.landmark_metrics || [],

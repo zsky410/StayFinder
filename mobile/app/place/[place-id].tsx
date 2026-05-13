@@ -1,7 +1,7 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Linking,
   Pressable,
@@ -16,7 +16,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SafeImage, SafeImageBackground } from "@/components/safe-image";
 import { DetailLocationMap } from "@/components/detail-location-map";
 import { theme } from "@/constants/theme";
-import { fetchPlaceDetail, type PlaceDetail } from "@/lib/stayfinder";
+import {
+  fetchPlaceDetail,
+  fetchReviewSummary,
+  type AiReviewSummary,
+  type PlaceDetail,
+} from "@/lib/stayfinder";
 import {
   derivePlaceTags,
   filterUsableImageUrls,
@@ -24,7 +29,6 @@ import {
   formatLocation,
   formatPriceText,
   formatRating,
-  formatReviewCount,
   getImageSource,
   getNearestLandmark,
   pickAmenityLabels,
@@ -282,14 +286,15 @@ export default function PlaceDetailRoute() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ "place-id"?: string | string[] }>();
   const placeId = getPlaceId(params["place-id"]);
-  const scrollViewRef = useRef<ScrollView>(null);
 
   const [place, setPlace] = useState<PlaceDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isGalleryExpanded, setIsGalleryExpanded] = useState(false);
   const [isReviewsExpanded, setIsReviewsExpanded] = useState(false);
-  const [gallerySectionY, setGallerySectionY] = useState(0);
+  const [aiSummary, setAiSummary] = useState<AiReviewSummary | null>(null);
+  const [isAiSummaryLoading, setIsAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -303,11 +308,14 @@ export default function PlaceDetailRoute() {
 
       setIsLoading(true);
       setErrorMessage(null);
+      setAiSummary(null);
+      setAiSummaryError(null);
 
       try {
         const payload = await fetchPlaceDetail(placeId);
         if (isActive) {
           setPlace(payload);
+          setAiSummary(payload.ai_review_summary);
         }
       } catch (error) {
         if (isActive) {
@@ -326,6 +334,52 @@ export default function PlaceDetailRoute() {
       isActive = false;
     };
   }, [placeId]);
+
+  const generateAiSummary = useCallback(
+    async ({ refresh = false }: { refresh?: boolean } = {}) => {
+      const targetPlaceId = place?.place_id || placeId;
+      if (!targetPlaceId || isAiSummaryLoading) {
+        return;
+      }
+
+      setIsAiSummaryLoading(true);
+      setAiSummaryError(null);
+
+      try {
+        const summary = await fetchReviewSummary(targetPlaceId, {
+          refresh,
+          useLlm: true,
+        });
+        setAiSummary({
+          summary_text: summary.summary_text,
+          bullets: summary.bullets || [],
+          model: summary.model,
+          prompt_version: summary.prompt_version,
+          source_review_count: summary.source_review_count,
+          metadata: summary.metadata || {},
+          updated_at: summary.updated_at,
+          source: summary.source,
+        });
+      } catch (error) {
+        setAiSummaryError(
+          error instanceof Error ? error.message : "Không sinh được AI tóm tắt.",
+        );
+      } finally {
+        setIsAiSummaryLoading(false);
+      }
+    },
+    [place?.place_id, placeId, isAiSummaryLoading],
+  );
+
+  useEffect(() => {
+    if (!place) {
+      return;
+    }
+    if (aiSummary || isAiSummaryLoading || aiSummaryError) {
+      return;
+    }
+    generateAiSummary().catch(() => undefined);
+  }, [place, aiSummary, isAiSummaryLoading, aiSummaryError, generateAiSummary]);
 
   const nearestLandmark = useMemo(() => getNearestLandmark(place?.landmark_metrics), [place]);
   const tags = useMemo(() => (place ? derivePlaceTags(place) : []), [place]);
@@ -351,13 +405,6 @@ export default function PlaceDetailRoute() {
     }
     return isReviewsExpanded ? place.reviews_sample : place.reviews_sample.slice(0, 2);
   }, [isReviewsExpanded, place]);
-
-  function scrollToGallery() {
-    scrollViewRef.current?.scrollTo({
-      animated: true,
-      y: Math.max(gallerySectionY - 18, 0),
-    });
-  }
 
   if (isLoading) {
     return (
@@ -402,7 +449,6 @@ export default function PlaceDetailRoute() {
       <StatusBar style="dark" />
 
       <ScrollView
-        ref={scrollViewRef}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
           paddingBottom: Math.max(insets.bottom + 112, 128),
@@ -463,27 +509,6 @@ export default function PlaceDetailRoute() {
                 <Feather color={theme.colors.ink} name="share-2" size={19} />
               </Pressable>
             </View>
-
-            <View style={{ alignItems: "flex-end", paddingBottom: 14, paddingHorizontal: 16 }}>
-              <Pressable
-                onPress={scrollToGallery}
-                style={{
-                  alignItems: "center",
-                  backgroundColor: "rgba(255,255,255,0.96)",
-                  borderRadius: 18,
-                  borderCurve: "continuous",
-                  flexDirection: "row",
-                  gap: 8,
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                }}
-              >
-                <MaterialCommunityIcons color={theme.colors.ink} name="image-multiple-outline" size={18} />
-                <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "600" }}>
-                  {galleryImages.length ? `${galleryImages.length} ảnh` : "Ảnh đang cập nhật"}
-                </Text>
-              </Pressable>
-            </View>
           </SafeImageBackground>
         </View>
 
@@ -512,25 +537,10 @@ export default function PlaceDetailRoute() {
               {place.title}
             </Text>
 
-            <View
-              style={{
-                backgroundColor: "#E8F0FF",
-                borderRadius: 16,
-                borderCurve: "continuous",
-                minWidth: 104,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                boxShadow: "0 6px 14px rgba(20, 27, 52, 0.05)",
-              }}
-            >
-              <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
-                <Feather color={theme.colors.sun} name="star" size={16} />
-                <Text selectable style={{ color: theme.colors.sun, fontSize: 16, fontWeight: "700" }}>
-                  {formatRating(place.rating)}
-                </Text>
-              </View>
-              <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "500", marginTop: 6 }}>
-                {formatReviewCount(place.reviews_count)}
+            <View style={{ alignItems: "center", flexDirection: "row", flexShrink: 0, gap: 6, paddingTop: 8 }}>
+              <Feather color={theme.colors.sun} name="star" size={16} />
+              <Text selectable style={{ color: theme.colors.sun, fontSize: 16, fontWeight: "700" }}>
+                {formatRating(place.rating)}
               </Text>
             </View>
           </View>
@@ -615,22 +625,37 @@ export default function PlaceDetailRoute() {
 
             <View style={{ gap: 14, marginTop: 30 }}>
               <View style={{ alignItems: "flex-start", flexDirection: "row", gap: 10 }}>
-                <Feather color={theme.colors.accent} name="check-circle" size={22} style={{ marginTop: 1 }} />
+                <Feather
+                  color={aiSummaryError ? theme.colors.coral : theme.colors.accent}
+                  name={aiSummaryError ? "alert-circle" : "check-circle"}
+                  size={22}
+                  style={{ marginTop: 1 }}
+                />
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "600" }}>
-                    Tóm tắt từ cache AI
+                    {aiSummary?.source === "cache" ? "Tóm tắt từ cache AI" : "Tóm tắt AI từ review"}
                   </Text>
-                  <Text selectable style={{ color: theme.colors.ink, fontSize: 15, lineHeight: 23 }}>
-                    {place.ai_review_summary?.summary_text || "Chưa có AI summary cache cho địa điểm này."}
-                  </Text>
+                  {isAiSummaryLoading && !aiSummary ? (
+                    <Text style={{ color: theme.colors.muted, fontSize: 14, lineHeight: 22 }}>
+                      Đang tóm tắt review bằng AI... có thể mất vài giây.
+                    </Text>
+                  ) : aiSummaryError ? (
+                    <Text style={{ color: theme.colors.coral, fontSize: 14, lineHeight: 22 }}>
+                      {aiSummaryError}
+                    </Text>
+                  ) : (
+                    <Text selectable style={{ color: theme.colors.ink, fontSize: 15, lineHeight: 23 }}>
+                      {aiSummary?.summary_text || "Chưa có AI summary cho địa điểm này."}
+                    </Text>
+                  )}
                 </View>
               </View>
 
-              {place.ai_review_summary?.bullets?.length ? (
+              {aiSummary?.bullets?.length ? (
                 <>
                   <View style={{ backgroundColor: "#D7DFF5", height: 1 }} />
                   <View style={{ gap: 10 }}>
-                    {place.ai_review_summary.bullets.slice(0, 5).map((bullet) => (
+                    {aiSummary.bullets.slice(0, 5).map((bullet) => (
                       <View key={bullet} style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
                         <MaterialCommunityIcons color={theme.colors.accent} name="star-four-points-outline" size={16} />
                         <Text selectable style={{ color: theme.colors.ink, flex: 1, fontSize: 14, lineHeight: 22 }}>
@@ -641,6 +666,59 @@ export default function PlaceDetailRoute() {
                   </View>
                 </>
               ) : null}
+
+              <View
+                style={{
+                  alignItems: "center",
+                  borderTopColor: "#D7DFF5",
+                  borderTopWidth: aiSummary?.bullets?.length ? 0 : 1,
+                  flexDirection: "row",
+                  gap: 10,
+                  justifyContent: "space-between",
+                  paddingTop: aiSummary?.bullets?.length ? 4 : 12,
+                }}
+              >
+                <Text style={{ color: theme.colors.muted, flex: 1, fontSize: 12, lineHeight: 18 }}>
+                  {aiSummary?.model
+                    ? `Model: ${aiSummary.model}${
+                        aiSummary.source_review_count
+                          ? ` · ${aiSummary.source_review_count} review`
+                          : ""
+                      }`
+                    : "Sinh AI dựa trên review thực tế từ dataset."}
+                </Text>
+                <Pressable
+                  accessibilityLabel={aiSummary ? "Tạo lại tóm tắt AI" : "Tạo tóm tắt AI"}
+                  disabled={isAiSummaryLoading}
+                  hitSlop={8}
+                  onPress={() => {
+                    generateAiSummary({ refresh: aiSummary !== null }).catch(() => undefined);
+                  }}
+                  style={({ pressed }) => ({
+                    alignItems: "center",
+                    backgroundColor: theme.colors.accent,
+                    borderRadius: 999,
+                    flexDirection: "row",
+                    gap: 6,
+                    opacity: isAiSummaryLoading ? 0.6 : pressed ? 0.85 : 1,
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                  })}
+                >
+                  <MaterialCommunityIcons
+                    color="#FFFFFF"
+                    name={isAiSummaryLoading ? "loading" : aiSummary ? "refresh" : "creation"}
+                    size={15}
+                  />
+                  <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "600" }}>
+                    {isAiSummaryLoading
+                      ? "Đang sinh..."
+                      : aiSummary
+                        ? "Tạo lại tóm tắt"
+                        : "Tạo tóm tắt"}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
           </View>
 
@@ -703,12 +781,7 @@ export default function PlaceDetailRoute() {
             </View>
           ) : null}
 
-          <View
-            onLayout={(event) => {
-              setGallerySectionY(event.nativeEvent.layout.y);
-            }}
-            style={{ gap: 16, marginTop: 34 }}
-          >
+          <View style={{ gap: 16, marginTop: 34 }}>
             <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
               <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "700" }}>
                 Ảnh
@@ -792,7 +865,6 @@ export default function PlaceDetailRoute() {
               <View style={{ gap: 12 }}>
                 {reviewsToRender.map((review, index) => {
                   const reviewText = review.review_text || review.text_translated || "";
-                  const reviewImages = filterUsableImageUrls(Array.isArray(review.images) ? review.images : []);
 
                   return (
                     <View
@@ -825,26 +897,6 @@ export default function PlaceDetailRoute() {
                         <Text selectable style={{ color: theme.colors.ink, fontSize: 14, lineHeight: 22 }}>
                           {reviewText}
                         </Text>
-                      ) : null}
-
-                      {reviewImages.length ? (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                          <View style={{ flexDirection: "row", gap: 10, paddingRight: 2 }}>
-                            {reviewImages.map((imageUrl, imageIndex) => (
-                              <SafeImage
-                                fallbackSource={detailHeroImage}
-                                key={`${imageIndex}-${imageUrl}`}
-                                source={getImageSource(imageUrl, detailHeroImage)}
-                                style={{
-                                  backgroundColor: "#E9EEF8",
-                                  borderRadius: 14,
-                                  height: 96,
-                                  width: 120,
-                                }}
-                              />
-                            ))}
-                          </View>
-                        </ScrollView>
                       ) : null}
                     </View>
                   );

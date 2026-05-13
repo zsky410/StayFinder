@@ -52,6 +52,17 @@ export type AiReviewSummary = {
   source?: string | null;
 };
 
+export type ReviewSummaryResponse = AiReviewSummary & {
+  place_id: string;
+  title: string;
+};
+
+export type FetchReviewSummaryOptions = {
+  refresh?: boolean;
+  useLlm?: boolean;
+  timeoutMs?: number;
+};
+
 export type PlaceDetail = {
   id: string;
   place_id: string;
@@ -107,14 +118,21 @@ export type PlacesQuery = {
   landmarkSlugs?: string[];
   minRating?: number | null;
   maxDistanceM?: number | null;
-  sort?: "rating_desc" | "reviews_desc" | "title_asc" | "distance_asc";
+  sort?: "rating_desc" | "reviews_desc" | "title_asc" | "distance_asc" | "random";
   page?: number;
   limit?: number;
 };
 
 type ExpoConstantsWithHost = typeof Constants & {
-  expoConfig?: { hostUri?: string | null } | null;
-  manifest2?: { extra?: { expoClient?: { hostUri?: string | null } | null } | null } | null;
+  expoConfig?: {
+    hostUri?: string | null;
+    extra?: { apiPort?: string | number | null } | null;
+  } | null;
+  manifest2?: {
+    extra?: {
+      expoClient?: { hostUri?: string | null } | null;
+    } | null;
+  } | null;
   manifest?: { debuggerHost?: string | null } | null;
 };
 
@@ -141,8 +159,11 @@ function resolveApiBaseUrl() {
     return explicitBaseUrl.replace(/\/+$/, "");
   }
 
-  const apiPort = String(process.env.EXPO_PUBLIC_API_PORT || "3000").trim() || "3000";
   const constants = Constants as ExpoConstantsWithHost;
+  const apiPort =
+    String(process.env.EXPO_PUBLIC_API_PORT || "").trim() ||
+    String(constants.expoConfig?.extra?.apiPort ?? "").trim() ||
+    "3000";
   const detectedHost = extractHost(
     constants.expoConfig?.hostUri ||
       constants.manifest2?.extra?.expoClient?.hostUri ||
@@ -297,4 +318,46 @@ export function fetchPlaceDetail(placeId: string) {
 
 export function fetchFiltersMeta() {
   return fetchJson<FiltersMeta>("/filters/meta");
+}
+
+const REVIEW_SUMMARY_TIMEOUT_MS = 45_000;
+
+export async function fetchReviewSummary(
+  placeId: string,
+  options: FetchReviewSummaryOptions = {},
+): Promise<ReviewSummaryResponse> {
+  const url = buildUrl("/ai/review-summary");
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? REVIEW_SUMMARY_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        placeId,
+        refresh: options.refresh === true,
+        useLlm: options.useLlm,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`AI summary timeout sau ${Math.round(timeoutMs / 1000)}s.`);
+    }
+    throw error;
+  }
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  return (await response.json()) as ReviewSummaryResponse;
 }
