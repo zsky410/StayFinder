@@ -1,0 +1,22 @@
+@startuml fig11-seq-get-places
+title StayFinder - Sequence: GET /places (tìm kiếm)
+actor "Người dùng" as U
+participant "Mobile App" as M
+participant "Express API" as API
+database "Postgres" as DB
+
+U -> M : Nhập từ khóa "homestay sông Hàn"
+M -> API : GET /places?q=...&limit=20
+activate API
+API -> API : Parse query, validate
+API -> API : Build SQL động (param hóa)
+API -> DB : SELECT COUNT(*) ... WHERE ...
+DB --> API : total = 312
+API -> DB : SELECT places + JOIN images cover ...
+DB --> API : rows[20]
+API -> API : Map row → PlaceSummary
+API --> M : { total, page, page_size, items[] }
+deactivate API
+M --> U : Render danh sách card
+
+@enduml

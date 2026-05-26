@@ -1,0 +1,19 @@
+@startuml
+title StayFinder - System Context
+left to right direction
+
+actor "Người dùng cuối" as User
+rectangle "StayFinder Mobile App" as App
+rectangle "StayFinder API Server" as API
+database "Supabase Postgres" as DB
+rectangle "RAG Pipeline" as RAG
+rectangle "Crawler + Normalizer" as Crawl
+
+User --> App : Tìm kiếm, xem chi tiết,\nchat AI
+App --> API : REST/JSON
+API --> DB : SQL queries
+API --> RAG : Query/Generate\nReview Summary
+RAG --> DB : Read chunks,\nwrite cache summaries
+Crawl --> DB : Import compact dataset
+
+@enduml

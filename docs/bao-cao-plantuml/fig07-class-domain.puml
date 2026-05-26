@@ -1,0 +1,117 @@
+@startuml fig07-class-domain
+title StayFinder - Class Diagram (domain logic)
+hide circle
+skinparam classAttributeIconSize 0
+
+class CrawlBatch {
+  +UUID id
+  +String batch_key
+  +String source_path
+  +int row_count
+  +DateTime created_at
+}
+
+class Place {
+  +UUID id
+  +String place_id
+  +String type_slug
+  +String title
+  +String district
+  +String neighborhood
+  +float lat
+  +float lng
+  +float rating
+  +int reviews_count
+  +addImage(url)
+  +addAmenity(slug)
+}
+
+class PlaceImage {
+  +UUID id
+  +String image_url
+  +int sort_order
+}
+
+class Review {
+  +UUID id
+  +int stars
+  +String review_text
+  +DateTime published_at
+  +int likes_count
+}
+
+class Amenity {
+  +int id
+  +String slug
+  +String label
+}
+
+class LocalLandmark {
+  +UUID id
+  +String slug
+  +String name
+  +String kind
+  +float lat
+  +float lng
+}
+
+class LandmarkMetric {
+  +UUID id
+  +int walking_distance_m
+  +String source
+}
+
+class LocalContextNote {
+  +UUID id
+  +String slug
+  +String content_md
+  +List<String> tags
+}
+
+class AiPlaceChunk {
+  +UUID id
+  +int chunk_index
+  +String content
+  +String content_md5
+  +byte[] embedding
+}
+
+class AiReviewSummary {
+  +UUID id
+  +String summary_text
+  +List<String> bullets
+  +String model
+  +String prompt_version
+  +int source_review_count
+}
+
+class ChatSession {
+  +UUID session_id
+  +List<Message> messages
+  +addUserMessage(text)
+  +addAssistantMessage(answer, places)
+}
+
+class RagPipeline {
+  +parseIntent(query)
+  +structuredRetrieval(intent)
+  +semanticRetrieval(query)
+  +mergeAndRerank(sql, sem)
+  +generateAnswer(context)
+}
+
+CrawlBatch "1" --> "0..*" Place
+Place "1" --> "0..*" PlaceImage
+Place "1" --> "0..*" Review
+Place "*" --> "*" Amenity
+Place "1" --> "0..*" LandmarkMetric
+LocalLandmark "1" --> "0..*" LandmarkMetric
+Place "1" --> "0..*" AiPlaceChunk
+Place "1" --> "0..1" AiReviewSummary
+LocalLandmark "0..*" --> "0..*" LocalContextNote
+RagPipeline ..> AiPlaceChunk
+RagPipeline ..> Place
+RagPipeline ..> LocalContextNote
+ChatSession ..> RagPipeline
+
+@enduml

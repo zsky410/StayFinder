@@ -1,0 +1,33 @@
+@startuml fig16-deployment
+title StayFinder - Deployment
+skinparam rectangleStyle rounded
+
+node "User Device\n(Android / iOS)" as Device {
+  artifact "StayFinder App\nExpo bundle" as AppArt
+}
+
+node "Application Host\n(VM / Container)" as AppHost {
+  artifact "Node.js + Express\nport 3000" as Express
+  artifact "Python venv\nphase2_rag.py / pregenerate..." as Python
+}
+
+node "Supabase Project" as DataHost {
+  database "Postgres 15\n+ pgvector" as Pg
+}
+
+node "Batch Worker\n(local / CI)" as Crawler {
+  artifact "Apify Client\n(Python)" as ApifyClient
+  artifact "Importer\n(Python)" as Importer
+}
+
+cloud "LLM Cloud\nOpenAI-compatible\ngpt-5.5" as LLMSvc
+
+AppArt --> Express : HTTPS
+Express --> Pg : pg pool
+Express --> Python : child_process
+Python --> Pg : SQL + vector
+Python --> LLMSvc : HTTPS
+ApifyClient --> Importer
+Importer --> Pg : UPSERT
+
+@enduml

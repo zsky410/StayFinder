@@ -1,0 +1,35 @@
+@startuml fig03-container
+title StayFinder - Kiến trúc theo Container
+skinparam rectangleStyle rounded
+
+package "Client Layer" {
+  rectangle "Mobile App\n(Expo + RN + TS)" as Mobile
+  rectangle "Web Admin (tối giản)" as WebAdmin
+}
+
+package "Application Layer" {
+  rectangle "REST API Server\n(Node.js + Express)" as API
+}
+
+package "Data Layer" {
+  database "PostgreSQL\n+ pgvector" as Pg
+}
+
+package "AI / Pipeline Layer" {
+  rectangle "Apify Crawler\n(Python)" as Crawler
+  rectangle "Importer\n(Python)" as Importer
+  rectangle "RAG Script\nchunk / embed / query\n(Python)" as RagScript
+  rectangle "Review Summary Bot\n(Python)" as ReviewBot
+}
+
+Mobile --> API : HTTPS REST
+WebAdmin --> API : HTTPS REST
+API --> Pg : SQL
+API --> RagScript : spawn
+API --> ReviewBot : spawn
+Crawler --> Importer : compact JSON
+Importer --> Pg : UPSERT
+RagScript --> Pg : SELECT + INSERT vector
+ReviewBot --> Pg : UPSERT cache
+
+@enduml

@@ -1,0 +1,23 @@
+@startuml fig12-seq-get-place-detail
+title StayFinder - Sequence: GET /places/:id (chi tiết)
+actor "Người dùng" as U
+participant "Mobile App" as M
+participant "Express API" as API
+database "Postgres" as DB
+
+U -> M : Bấm card place
+M -> API : GET /places/:id
+activate API
+API -> DB : SELECT place core
+API -> DB : SELECT gallery (place_images)
+API -> DB : SELECT amenities (JOIN place_amenities)
+API -> DB : SELECT TOP 5 reviews ORDER BY likes_count
+API -> DB : SELECT landmark_metrics (JOIN local_landmarks)
+API -> DB : SELECT ai_review_summary cache
+DB --> API : gộp dữ liệu
+API -> API : Map → PlaceDetail JSON
+API --> M : PlaceDetail
+deactivate API
+M --> U : Render Detail
+
+@enduml

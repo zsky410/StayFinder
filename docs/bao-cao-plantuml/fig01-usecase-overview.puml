@@ -1,0 +1,67 @@
+@startuml fig01-usecase-overview
+title StayFinder - Sơ đồ Use Case tổng quát
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+actor "Người dùng" as User
+actor "Admin" as Admin
+actor "Hệ thống AI / Cron" as SysAI
+
+package "Mobile App" {
+  rectangle "UC-01\nTìm kiếm Home" as UC01
+  rectangle "UC-02\nLọc & sắp xếp" as UC02
+  rectangle "UC-03\nXem chi tiết" as UC03
+  rectangle "UC-04\nXem khoảng cách landmark" as UC04
+  rectangle "UC-05\nLưu yêu thích" as UC05
+  rectangle "UC-06\nXóa Saved" as UC06
+  rectangle "UC-07\nChat AI" as UC07
+  rectangle "UC-08\nXem AI Summary" as UC08
+  rectangle "UC-09\nRefresh AI Summary" as UC09
+  rectangle "UC-10\nMở Maps / Gọi điện" as UC10
+  rectangle "UC-11\nMap view" as UC11
+}
+
+package "Web Admin" {
+  rectangle "UC-18\nQuản lý Places" as UC18
+  rectangle "UC-19\nQuản lý Landmarks" as UC19
+  rectangle "UC-20\nQuản lý Local Context" as UC20
+  rectangle "UC-16\nRebuild Distance Job" as UC16
+  rectangle "UC-17\nRebuild AI Summaries" as UC17
+}
+
+package "Pipeline dữ liệu" {
+  rectangle "UC-12\nCrawl batch" as UC12
+  rectangle "UC-13\nImport DB" as UC13
+  rectangle "UC-14\nBuild chunk RAG" as UC14
+  rectangle "UC-15\nBuild embedding" as UC15
+}
+
+User --> UC01
+User --> UC02
+User --> UC03
+User --> UC04
+User --> UC05
+User --> UC06
+User --> UC07
+User --> UC08
+User --> UC09
+User --> UC10
+User --> UC11
+
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+Admin --> UC16
+Admin --> UC17
+
+SysAI --> UC12
+SysAI --> UC13
+SysAI --> UC14
+SysAI --> UC15
+
+UC03 ..> UC04 : <<include>>
+UC03 ..> UC08 : <<include>>
+UC07 ..> UC03 : <<include>>
+
+@enduml

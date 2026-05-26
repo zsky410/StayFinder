@@ -7,7 +7,7 @@
 //   node scripts/pregenerate_review_summaries.mjs --limit 100
 //   node scripts/pregenerate_review_summaries.mjs --batch-key <key> --limit 200
 //   node scripts/pregenerate_review_summaries.mjs --refresh              # ghi đè cache
-//   node scripts/pregenerate_review_summaries.mjs --no-llm               # chỉ dùng heuristic
+//   node scripts/pregenerate_review_summaries.mjs --no-llm               # chỉ dùng heuristic fallback
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -162,7 +162,7 @@ async function main() {
       pythonArgs.push("--refresh");
     }
     if (useLlm) {
-      pythonArgs.push("--use-claude");
+      pythonArgs.push("--use-llm");
     }
 
     const placeStart = Date.now();

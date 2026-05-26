@@ -1,0 +1,35 @@
+@startuml fig14-seq-review-summary
+title StayFinder - Sequence: POST /ai/review-summary
+actor "Người dùng" as U
+participant "Mobile App" as M
+participant "Express API" as API
+participant "Review Summary Bot" as Bot
+database "Postgres" as DB
+cloud "LLM Provider" as LLM
+
+U -> M : Bấm "Tạo tóm tắt AI"
+M -> API : POST /ai/review-summary { placeId, refresh:false }
+activate API
+API -> DB : SELECT cache ai_review_summaries
+DB --> API : cache hoặc null
+
+alt Có cache và chưa refresh
+  API --> M : trả cache (source = cache)
+else Cần sinh mới
+  API -> Bot : spawn pregenerate / phase2
+  activate Bot
+  Bot -> DB : SELECT TOP 30 reviews
+  DB --> Bot : reviews[]
+  Bot -> LLM : Prompt JSON output
+  LLM --> Bot : text JSON
+  Bot -> Bot : Parse + validate
+  Bot -> DB : UPSERT ai_review_summaries
+  Bot --> API : summary mới
+  deactivate Bot
+  API --> M : source = fresh
+end
+
+deactivate API
+M --> U : Render AI Summary
+
+@enduml

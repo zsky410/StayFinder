@@ -1,0 +1,20 @@
+@startuml
+title Sequence - Chat AI with Hybrid Retrieval
+actor User
+participant "Mobile App" as App
+participant "API Server" as API
+participant "RAG Script" as RAG
+database "Postgres" as DB
+
+User -> App : Gửi câu hỏi tự nhiên
+App -> API : POST /chat/query
+API -> RAG : query --json
+RAG -> DB : Structured retrieval (SQL filters)
+RAG -> DB : Semantic retrieval (vector search)
+DB --> RAG : candidate places + chunk context
+RAG --> API : intent + answer draft + place_ids
+API -> DB : Fetch place summaries by place_ids
+DB --> API : recommended_places
+API --> App : answer + recommended_places
+App --> User : Hiển thị trả lời và gợi ý
+@enduml

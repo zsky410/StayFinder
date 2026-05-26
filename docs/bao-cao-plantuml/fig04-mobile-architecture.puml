@@ -1,0 +1,38 @@
+@startuml fig04-mobile-architecture
+title StayFinder - Kiến trúc bên trong Mobile App
+skinparam rectangleStyle rounded
+
+package "Presentation Layer (UI)" {
+  rectangle "Splash" as Splash
+  rectangle "Tab Group\nHome / Results / Saved / Chat / Profile" as Tabs
+  rectangle "/place/[id]" as Detail
+  rectangle "/ai-review/[id]" as AiReview
+  rectangle "/filter-sheet" as Filter
+  rectangle "Components\n(safe-image, card, header, map)" as Comp
+}
+
+package "Logic / Hooks" {
+  rectangle "useFilters, useSaved,\nuseChat, useReviewSummary" as Hooks
+}
+
+package "Data Access (API SDK)" {
+  rectangle "mobile/lib/stayfinder.ts\n(typed fetcher + AbortController)" as Sdk
+}
+
+package "Local Storage" {
+  rectangle "AsyncStorage\n(saved, recent)" as AsyncS
+}
+
+rectangle "REST API" as ExternalAPI
+
+Splash --> Tabs
+Tabs --> Detail
+Detail --> AiReview
+Tabs --> Filter
+Tabs --> Comp
+Comp --> Hooks
+Hooks --> Sdk
+Hooks --> AsyncS
+Sdk --> ExternalAPI : HTTPS
+
+@enduml

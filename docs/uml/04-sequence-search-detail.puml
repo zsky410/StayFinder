@@ -1,0 +1,19 @@
+@startuml
+title Sequence - Search and Detail Flow
+actor User
+participant "Mobile App" as App
+participant "API Server" as API
+database "Postgres" as DB
+
+User -> App : Nhập từ khóa
+App -> API : GET /places?q=...
+API -> DB : Query filtered places
+DB --> API : rows
+API --> App : total + items[]
+User -> App : Chọn một place
+App -> API : GET /places/:id
+API -> DB : Query place detail + images + amenities + reviews
+DB --> API : detail rows
+API --> App : PlaceDetail JSON
+App --> User : Render màn Detail
+@enduml

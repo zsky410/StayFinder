@@ -1,0 +1,32 @@
+@startuml fig09-activity-search-detail
+title StayFinder - Activity: Tìm kiếm và xem chi tiết (UC-01 → UC-03)
+start
+:Mở app;
+:Splash → Home;
+if (Người dùng thao tác?) then (Nhập từ khóa)
+  :Push /results?q=...;
+elseif (Bấm quick chip / thẻ landmark) then
+  :Push /results?landmark=...;
+endif
+:GET /places?...;
+if (Response OK?) then (no)
+  :Hiển thị error + Retry;
+  stop
+endif
+:Render danh sách card;
+if (Người dùng bấm card?) then (yes)
+  :Push /place/:id;
+  :GET /places/:id;
+  if (Có AI summary cache?) then (yes)
+    :Render Detail + summary có sẵn;
+  else (no)
+    :Render Detail + nút Tạo tóm tắt;
+  endif
+else (no)
+  if (Thay đổi filter?) then (yes)
+    :GET /places?...;
+  endif
+endif
+:Kết thúc;
+stop
+@enduml

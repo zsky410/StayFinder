@@ -1,0 +1,33 @@
+@startuml fig13-seq-chat-query
+title StayFinder - Sequence: POST /chat/query (Chat AI RAG)
+actor "Người dùng" as U
+participant "Mobile App" as M
+participant "Express API" as API
+participant "RAG Script\n(Python)" as RAG
+database "Postgres" as DB
+cloud "LLM Provider" as LLM
+
+U -> M : "khách sạn gần cầu rồng cho gia đình"
+M -> API : POST /chat/query { query }
+activate API
+API -> RAG : spawn phase2_rag.py query --json ...
+activate RAG
+RAG -> RAG : parseIntent(query)
+RAG -> DB : Structured retrieval (SQL filter)
+DB --> RAG : candidates[24]
+RAG -> DB : Semantic retrieval top-k (pgvector)
+DB --> RAG : chunks[12]
+RAG -> RAG : mergeAndRerank by place_id
+RAG -> DB : Fetch local_context_notes
+DB --> RAG : notes[3]
+RAG -> LLM : Prompt (context = shortlist + notes)
+LLM --> RAG : answer text
+RAG --> API : JSON { answer, place_ids, ... }
+deactivate RAG
+API -> DB : Fetch PlaceSummary[] theo place_ids
+DB --> API : recommended_places[]
+API --> M : answer + recommended_places + follow_up_prompts
+deactivate API
+M --> U : Render chat + cards
+
+@enduml

@@ -1,0 +1,27 @@
+@startuml fig02-system-context
+title StayFinder - Kiến trúc tổng thể (System Context)
+left to right direction
+skinparam rectangleStyle rounded
+
+actor "Người dùng" as User
+actor "Admin" as Admin
+
+rectangle "Mobile App\nReact Native + Expo Router" as Mobile
+rectangle "Web Admin\ntối giản" as WebAdmin
+rectangle "REST API\nNode.js + Express" as API
+database "Supabase Postgres\n+ pgvector" as DB
+rectangle "RAG Pipeline\nPython scripts" as RAG
+rectangle "Crawler\nApify Actor" as Crawler
+cloud "LLM Provider\nOpenAI-compatible\ngpt-5.5" as LLM
+
+User --> Mobile : Tìm kiếm, chi tiết,\nChat AI
+Admin --> WebAdmin
+Mobile --> API : HTTPS REST
+WebAdmin --> API : HTTPS REST\nBearer admin
+API --> DB : SQL pool
+API --> RAG : spawn Python
+RAG --> DB : SQL + pgvector
+RAG --> LLM : HTTP
+Crawler --> DB : raw + compact JSON\n(via import)
+
+@enduml

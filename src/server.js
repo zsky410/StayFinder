@@ -269,9 +269,17 @@ function buildPlaceFilterContext(filters) {
 }
 
 function buildPlaceOrderSql(sort, landmarkRef) {
+  const hasPriceSql = `(
+    p.price_text IS NOT NULL
+    AND btrim(p.price_text) <> ''
+    AND lower(btrim(p.price_text)) NOT IN ('null', 'n/a', 'na', 'none', 'unknown')
+  )`;
+
   switch (sort) {
     case "random":
       return "random()";
+    case "price_available_desc":
+      return `CASE WHEN ${hasPriceSql} THEN 0 ELSE 1 END, p.rating DESC NULLS LAST, p.reviews_count DESC NULLS LAST, p.title ASC`;
     case "reviews_desc":
       return "p.reviews_count DESC NULLS LAST, p.rating DESC NULLS LAST, p.title ASC";
     case "title_asc":
@@ -1067,7 +1075,7 @@ async function getOrGenerateReviewSummary(payload) {
     args.push("--refresh");
   }
   if (useLlm) {
-    args.push("--use-claude");
+    args.push("--use-llm");
   }
 
   const generated = await runPhase2Json(args);

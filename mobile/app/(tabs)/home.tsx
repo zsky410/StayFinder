@@ -258,11 +258,11 @@ function FeaturedCard({
               </Text>
             </View>
             <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 4 }}>
-              <Text selectable style={{ color: theme.colors.sun, fontSize: 18, fontWeight: "700" }}>
-                {formatPriceText(null)}
+              <Text selectable numberOfLines={1} style={{ color: theme.colors.sun, fontSize: 18, fontWeight: "700" }}>
+                {formatPriceText(place.price_text)}
               </Text>
               <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "500" }}>
-                giá cập nhật sau
+                tham khảo
               </Text>
             </View>
           </View>
@@ -351,6 +351,13 @@ function NearbyCard({
             {formatLocation(place)}
           </Text>
         </View>
+
+        <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+          <Feather color={theme.colors.sun} name="tag" size={14} />
+          <Text selectable numberOfLines={1} style={{ color: theme.colors.sun, flex: 1, fontSize: 14, fontWeight: "700" }}>
+            {formatPriceText(place.price_text)}
+          </Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -398,11 +405,11 @@ export default function HomeTabRoute() {
 
       try {
         const [featuredResponse, nearbyResponse] = await Promise.all([
-          fetchPlaces({ limit: 6, sort: "random" }),
+          fetchPlaces({ limit: 6, sort: "price_available_desc" }),
           fetchPlaces({
             landmarkSlugs: ["dragon-bridge"],
             limit: 3,
-            sort: "random",
+            sort: "price_available_desc",
           }),
         ]);
 

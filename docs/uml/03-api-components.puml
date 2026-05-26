@@ -1,0 +1,24 @@
+@startuml
+title API Internal Components
+left to right direction
+
+component "Request Parser\n& Validator" as Parser
+component "Query Builder" as QueryBuilder
+component "Response Mapper" as Mapper
+component "AI Orchestrator" as AIOrch
+component "Error Handler" as Err
+database "Postgres" as DB
+component "RAG Script Adapter" as RagAdapter
+
+Parser --> QueryBuilder
+QueryBuilder --> DB
+DB --> Mapper
+Parser --> AIOrch
+AIOrch --> RagAdapter
+RagAdapter --> DB
+AIOrch --> Mapper
+Parser --> Err
+QueryBuilder --> Err
+AIOrch --> Err
+
+@enduml

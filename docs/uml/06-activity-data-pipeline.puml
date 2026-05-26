@@ -1,0 +1,18 @@
+@startuml
+title Activity - Data Pipeline
+start
+:Khai báo input crawl;
+:Chạy crawler;
+:Lưu raw dataset;
+:Chuẩn hóa thành compact dataset;
+if (QA đạt ngưỡng?) then (Yes)
+  :Import compact vào Postgres;
+  :Build chunks;
+  :Build embeddings;
+  :Sẵn sàng phục vụ AI query;
+else (No)
+  :Gắn cờ needs_review;
+  :Xuất báo cáo lỗi dữ liệu;
+endif
+stop
+@enduml

@@ -118,7 +118,7 @@ export type PlacesQuery = {
   landmarkSlugs?: string[];
   minRating?: number | null;
   maxDistanceM?: number | null;
-  sort?: "rating_desc" | "reviews_desc" | "title_asc" | "distance_asc" | "random";
+  sort?: "rating_desc" | "reviews_desc" | "title_asc" | "distance_asc" | "random" | "price_available_desc";
   page?: number;
   limit?: number;
 };

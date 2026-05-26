@@ -1,0 +1,13 @@
+@startuml
+title State - AI Review Summary Cache Lifecycle
+
+[*] --> Missing
+Missing --> Generating : Request summary
+Generating --> Cached : Generate success
+Generating --> Failed : Generate error
+Failed --> Generating : Retry/refresh
+Cached --> Stale : Data changed or TTL exceeded
+Stale --> Generating : Refresh
+Cached --> Cached : Read cache hit
+Cached --> [*]
+@enduml

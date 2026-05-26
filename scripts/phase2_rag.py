@@ -47,8 +47,10 @@ except ImportError as exc:  # pragma: no cover
 
 DEFAULT_BATCH_KEY = "danang_accommodations_batch_20260323_082743"
 DEFAULT_EMBED_MODEL = os.environ.get("RAG_EMBED_MODEL") or "text-embedding-3-small"
-DEFAULT_CHAT_MODEL = os.environ.get("RAG_CHAT_MODEL") or "gpt-5.5"
+DEFAULT_CHAT_MODEL = os.environ.get("RAG_CHAT_MODEL") or "gpt-5.4"
 DEFAULT_CHAT_PROVIDER = os.environ.get("RAG_CHAT_PROVIDER") or "openai_compatible"
+DEFAULT_CHAT_BASE_URL = "http://127.0.0.1:8080/v1"
+DEFAULT_CHAT_API_KEY = "pwd"
 DEFAULT_PROMPT_VERSION = "phase2-v1"
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 180
@@ -190,11 +192,11 @@ def get_embed_base_url() -> str | None:
 
 
 def get_chat_api_key() -> str | None:
-    return os.environ.get("RAG_CHAT_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    return os.environ.get("RAG_CHAT_API_KEY") or os.environ.get("OPENAI_API_KEY") or DEFAULT_CHAT_API_KEY
 
 
 def get_chat_base_url() -> str | None:
-    return os.environ.get("RAG_CHAT_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
+    return os.environ.get("RAG_CHAT_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or DEFAULT_CHAT_BASE_URL
 
 
 def get_chat_provider() -> str:
@@ -698,9 +700,11 @@ def create_chat_model(model_name: str, *, temperature: float) -> Any:
     if provider in ("openai", "openai_compatible", "openai-compatible"):
         kwargs: dict[str, Any] = {
             "model": model_name,
-            "temperature": temperature,
             "api_key": get_chat_api_key(),
         }
+        configured_temperature = os.environ.get("RAG_CHAT_TEMPERATURE")
+        if configured_temperature not in (None, ""):
+            kwargs["temperature"] = float(configured_temperature)
         base_url = get_chat_base_url()
         if base_url:
             kwargs["base_url"] = base_url
@@ -1445,7 +1449,7 @@ def cmd_review_summary(args: argparse.Namespace) -> int:
             print(json.dumps({"source": "cache", **cached}, ensure_ascii=False, indent=2, default=str))
             return 0
 
-    if args.use_claude:
+    if args.use_llm:
         payload = generate_llm_review_summary(place, model_name=args.chat_model)
     else:
         payload = build_fallback_summary(place)
@@ -1512,9 +1516,17 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--chat-model", default=DEFAULT_CHAT_MODEL)
     review.add_argument(
         "--use-claude",
+        dest="use_llm",
         action="store_true",
         help="Use the configured chat provider instead of heuristic fallback (legacy flag name kept for compatibility)",
     )
+    review.add_argument(
+        "--use-llm",
+        dest="use_llm",
+        action="store_true",
+        help="Use the configured chat provider instead of heuristic fallback",
+    )
+    review.set_defaults(use_llm=False)
     review.add_argument("--refresh", action="store_true", help="Ignore cached summary and regenerate")
     review.set_defaults(func=cmd_review_summary)
 

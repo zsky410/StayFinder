@@ -1,0 +1,24 @@
+@startuml fig10-rag-query-flow
+title StayFinder - Luồng RAG query / Chat AI
+left to right direction
+skinparam rectangleStyle rounded
+
+rectangle "User query" as Q
+rectangle "Intent Parser\ntype_slugs, landmark_slugs,\namenity_labels, min_rating, max_distance,\ntags family/business/beach/budget" as I
+rectangle "Structured Retrieval\nSQL filter on places + metrics" as SQL
+rectangle "Semantic Retrieval\ntop-k chunks via pgvector cosine" as SEM
+rectangle "Merge & Re-rank\ndedupe by place_id" as MERGE
+rectangle "Inject local_context_notes" as CTX
+rectangle "LLM Generation\nstrict context-only" as LLM
+rectangle "answer + recommended_places\n+ follow_up_prompts" as OUT
+
+Q --> I
+I --> SQL
+I --> SEM
+SQL --> MERGE
+SEM --> MERGE
+MERGE --> CTX
+CTX --> LLM
+LLM --> OUT
+
+@enduml

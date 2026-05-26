@@ -1,0 +1,86 @@
+@startuml
+title Domain Class Diagram - StayFinder Data Model
+hide circle
+skinparam classAttributeIconSize 0
+
+class CrawlBatch {
+  +id: uuid
+  +batch_key: text
+  +row_count: int
+  +created_at: timestamptz
+}
+
+class Place {
+  +id: uuid
+  +place_id: text
+  +type_slug: text
+  +title: text
+  +district: text
+  +rating: numeric
+}
+
+class PlaceImage {
+  +id: uuid
+  +place_id: uuid
+  +image_url: text
+  +sort_order: int
+}
+
+class Review {
+  +id: uuid
+  +place_id: uuid
+  +stars: int
+  +review_text: text
+  +likes_count: int
+}
+
+class Amenity {
+  +id: int
+  +slug: text
+  +label: text
+}
+
+class PlaceAmenity {
+  +place_id: uuid
+  +amenity_id: int
+}
+
+class Landmark {
+  +id: uuid
+  +slug: text
+  +name: text
+}
+
+class LandmarkMetric {
+  +id: uuid
+  +place_id: uuid
+  +landmark_id: uuid
+  +distance_m: int
+  +method: text
+}
+
+class AiPlaceChunk {
+  +id: uuid
+  +place_id: uuid
+  +chunk_index: int
+  +content: text
+  +embedding: vector
+}
+
+class AiReviewSummary {
+  +id: uuid
+  +place_id: uuid
+  +summary_text: text
+  +bullets: jsonb
+}
+
+CrawlBatch "1" -- "0..*" Place
+Place "1" -- "0..*" PlaceImage
+Place "1" -- "0..*" Review
+Place "1" -- "0..*" PlaceAmenity
+Amenity "1" -- "0..*" PlaceAmenity
+Place "1" -- "0..*" LandmarkMetric
+Landmark "1" -- "0..*" LandmarkMetric
+Place "1" -- "0..*" AiPlaceChunk
+Place "1" -- "0..1" AiReviewSummary
+@enduml

@@ -47,11 +47,11 @@ Cho embedding:
 Cho generate answer / review summary:
 
 - mặc định repo hiện support `openai_compatible`
-- nếu dùng local gateway như `http://127.0.0.1:39647/v1`:
+- nếu dùng local gateway như `http://127.0.0.1:8080/v1`:
   - `RAG_CHAT_PROVIDER=openai_compatible`
-  - `RAG_CHAT_API_KEY=...`
-  - `RAG_CHAT_BASE_URL=http://127.0.0.1:39647/v1`
-  - `RAG_CHAT_MODEL=gpt-5.5`
+  - `RAG_CHAT_API_KEY=pwd`
+  - `RAG_CHAT_BASE_URL=http://127.0.0.1:8080/v1`
+  - `RAG_CHAT_MODEL=gpt-5.4`
 - nếu muốn dùng Anthropic trực tiếp:
   - `RAG_CHAT_PROVIDER=anthropic`
   - `ANTHROPIC_API_KEY=...`
@@ -60,7 +60,7 @@ Biến tùy chọn:
 
 - `RAG_EMBED_MODEL=text-embedding-3-small`
 - `RAG_EMBED_BASE_URL=...`
-- `RAG_CHAT_MODEL=gpt-5.5`
+- `RAG_CHAT_MODEL=gpt-5.4`
 
 ## 3. Build chunk index
 
@@ -119,7 +119,7 @@ Re-embed toàn bộ:
   --generate
 ```
 
-Mặc định nếu không đổi env, lệnh trên sẽ dùng `openai_compatible` + `gpt-5.5`.
+Mặc định nếu không đổi env, lệnh trên sẽ dùng `openai_compatible` + `gpt-5.4`.
 
 Ghi chú:
 
@@ -141,13 +141,13 @@ Ghi chú:
 ```bash
 .venv/bin/python scripts/phase2_rag.py review-summary \
   --place-id ChIJbeO3ddMZQjERzeIxy-6JpYc \
-  --use-claude \
+  --use-llm \
   --refresh
 ```
 
 Ghi chú:
 
-- Cờ `--use-claude` là tên cũ được giữ lại để tương thích.
+- Cờ chính là `--use-llm`; `--use-claude` vẫn được giữ lại để tương thích lệnh cũ.
 - Khi bật cờ này, script sẽ dùng chat provider đang cấu hình (`openai_compatible` hoặc `anthropic`) thay vì heuristic fallback.
 
 ## 7. Validation

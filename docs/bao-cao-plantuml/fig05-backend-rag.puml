@@ -1,0 +1,45 @@
+@startuml fig05-backend-rag
+title StayFinder - Kiến trúc Backend API + RAG Pipeline
+skinparam rectangleStyle rounded
+
+package "Express API Server" {
+  rectangle "CORS middleware" as Cors
+  rectangle "Admin Auth middleware" as AdminAuth
+  rectangle "Query Parser & Validator" as Parser
+  rectangle "SQL Query Builder\n(dynamic params)" as QB
+  rectangle "Response Mapper\n(PlaceSummary / PlaceDetail)" as Mapper
+  rectangle "AI Orchestrator" as AIOrch
+  rectangle "Error Normalizer" as ErrNorm
+  rectangle "Admin Job Manager\n(in-memory)" as JobMgr
+}
+
+package "Python RAG Scripts" {
+  rectangle "chunker" as Chunker
+  rectangle "embedder" as Embedder
+  rectangle "query / generate" as Query
+  rectangle "review-summary" as SummaryBot
+}
+
+database "Postgres + pgvector" as DB
+cloud "LLM API" as LLM
+
+Parser --> QB
+QB --> DB
+DB --> Mapper
+Parser --> AIOrch
+AIOrch --> Query
+AIOrch --> SummaryBot
+Query --> DB
+Query --> LLM
+SummaryBot --> DB
+SummaryBot --> LLM
+AdminAuth --> JobMgr
+JobMgr --> Chunker
+JobMgr --> Embedder
+Chunker --> DB
+Embedder --> DB
+Embedder --> LLM
+QB --> ErrNorm
+AIOrch --> ErrNorm
+
+@enduml

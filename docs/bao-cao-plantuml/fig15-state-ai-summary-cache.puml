@@ -1,0 +1,14 @@
+@startuml fig15-state-ai-summary-cache
+title StayFinder - State: Vòng đời cache AI review summary
+hide empty description
+[*] --> Missing
+Missing --> Generating : POST /ai/review-summary\n(no cache)
+Generating --> Cached : Generate OK + upsert
+Generating --> Failed : LLM error / parse error
+Failed --> Generating : Người dùng bấm Thử lại
+Cached --> Stale : Review mới hoặc\nprompt_version đổi
+Stale --> Generating : Admin rebuild\nhoặc user Refresh
+Cached --> Cached : Read cache hit
+Cached --> [*] : Place bị xóa
+
+@enduml

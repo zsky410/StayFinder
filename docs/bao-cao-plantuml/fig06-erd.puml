@@ -1,0 +1,131 @@
+@startuml fig06-erd
+title StayFinder - ERD quan hệ tổng quát
+hide circle
+skinparam linetype ortho
+
+entity crawl_batches {
+  * **id** : UUID <<PK>>
+  --
+  * **batch_key** : TEXT <<UK>>
+  source_path : TEXT
+  row_count : INT
+  created_at : TIMESTAMPTZ
+}
+
+entity places {
+  * **id** : UUID <<PK>>
+  --
+  * **place_id** : TEXT <<UK>>
+  batch_id : UUID <<FK>>
+  type_slug : TEXT
+  title : TEXT
+  district : TEXT
+  neighborhood : TEXT
+  lat : DOUBLE
+  lng : DOUBLE
+  rating : NUMERIC
+  reviews_count : INT
+}
+
+entity place_images {
+  * **id** : UUID <<PK>>
+  --
+  * place_id : UUID <<FK>>
+  image_url : TEXT
+  sort_order : INT
+}
+
+entity reviews {
+  * **id** : UUID <<PK>>
+  --
+  * place_id : UUID <<FK>>
+  stars : INT
+  review_text : TEXT
+  likes_count : INT
+  published_at : TIMESTAMPTZ
+}
+
+entity amenities {
+  * **id** : SERIAL <<PK>>
+  --
+  * slug : TEXT <<UK>>
+  * label : TEXT <<UK>>
+}
+
+entity place_amenities {
+  * place_id : UUID <<FK>>
+  * amenity_id : INT <<FK>>
+}
+
+entity local_landmarks {
+  * **id** : UUID <<PK>>
+  --
+  * slug : TEXT <<UK>>
+  name : TEXT
+  kind : TEXT
+  lat : DOUBLE
+  lng : DOUBLE
+  metadata : JSONB
+}
+
+entity local_zones {
+  * **id** : UUID <<PK>>
+  --
+  * slug : TEXT <<UK>>
+  name : TEXT
+  geom : JSONB
+}
+
+entity place_landmark_metrics {
+  * **id** : UUID <<PK>>
+  --
+  * place_id : UUID <<FK>>
+  * landmark_id : UUID <<FK>>
+  walking_distance_m : INT
+  source : TEXT
+}
+
+entity local_context_notes {
+  * **id** : UUID <<PK>>
+  --
+  slug : TEXT
+  content_md : TEXT
+  applies_to : JSONB
+}
+
+entity ai_place_chunks {
+  * **id** : UUID <<PK>>
+  --
+  * place_id : UUID <<FK>>
+  chunk_index : INT
+  content : TEXT
+  content_md5 : TEXT
+  embedding : VECTOR_1536
+  metadata : JSONB
+}
+
+entity ai_review_summaries {
+  * **id** : UUID <<PK>>
+  --
+  * place_id : UUID <<FK>>
+  summary_text : TEXT
+  bullets : JSONB
+  model : TEXT
+  prompt_version : TEXT
+  source_review_count : INT
+  updated_at : TIMESTAMPTZ
+}
+
+crawl_batches ||--o{ places
+places ||--o{ place_images
+places ||--o{ reviews
+places ||--o{ place_amenities
+amenities ||--o{ place_amenities
+places ||--o{ place_landmark_metrics
+local_landmarks ||--o{ place_landmark_metrics
+places ||--o{ ai_place_chunks
+places ||--o| ai_review_summaries
+local_landmarks }o..o{ local_zones : ref
+local_context_notes }o..o{ local_landmarks : applies_to
+
+@enduml

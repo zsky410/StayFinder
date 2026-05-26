@@ -1,0 +1,29 @@
+@startuml
+title Deployment Diagram - StayFinder
+left to right direction
+
+node "User Device\n(iOS/Android)" as Device {
+  artifact "StayFinder Mobile App" as MobileApp
+}
+
+node "Application Server" as AppServer {
+  artifact "Node.js Express API" as ApiApp
+  artifact "Python RAG Scripts" as RagScripts
+}
+
+node "Data Platform" as DataNode {
+  database "Supabase Postgres" as Pg
+}
+
+node "Batch Worker" as BatchNode {
+  artifact "Crawler Scripts" as CrawlScripts
+  artifact "Importer Scripts" as ImportScripts
+}
+
+MobileApp --> ApiApp : HTTPS
+ApiApp --> Pg : SQL/TCP
+ApiApp --> RagScripts : Process call
+RagScripts --> Pg : Read/Write embeddings, summaries
+CrawlScripts --> ImportScripts : compact JSON
+ImportScripts --> Pg : Bulk upsert
+@enduml

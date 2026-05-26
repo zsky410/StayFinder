@@ -1,0 +1,31 @@
+@startuml
+title StayFinder - Container Diagram
+left to right direction
+skinparam rectangleStyle rounded
+
+package "Client Layer" {
+  rectangle "Mobile App\n(Expo + React Native)" as Mobile
+}
+
+package "Application Layer" {
+  rectangle "REST API\n(Node.js + Express)" as Api
+}
+
+package "Data Layer" {
+  database "Postgres\n(Supabase)" as Pg
+}
+
+package "AI/Data Pipeline Layer" {
+  rectangle "Crawler Scripts\n(Python)" as Crawler
+  rectangle "Import Script\n(Python)" as Importer
+  rectangle "RAG Script\n(Chunk/Embed/Query)" as RagScript
+}
+
+Mobile --> Api : HTTP requests
+Api --> Pg : Read/Write data
+Api --> RagScript : AI query/summary
+RagScript --> Pg : Chunks + cache\nretrieval
+Crawler --> Importer : Raw/Compact files
+Importer --> Pg : Upsert batch data
+
+@enduml

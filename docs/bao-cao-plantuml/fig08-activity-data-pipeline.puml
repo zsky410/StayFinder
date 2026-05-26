@@ -1,0 +1,24 @@
+@startuml fig08-activity-data-pipeline
+title StayFinder - Activity: Pipeline dữ liệu Crawl → Import → RAG
+start
+:Khai báo input crawl\n(city, types, maxItems, batch_key);
+:Chạy Apify Actor;
+:Raw dataset\nall_types_raw_combined.json;
+:Chuẩn hóa compact\nall_types_compact_combined.json;
+if (QA đạt ngưỡng?) then (yes)
+  :Import vào Postgres\nscripts/import_compact_to_supabase.py;
+  split
+    :Rebuild landmark distance\nrefresh_place_landmark_metrics;
+    :Build RAG chunks\nphase2_rag.py chunk;
+    :Build embeddings\nphase2_rag.py embed;
+    :Sẵn sàng phục vụ Chat AI;
+  split again
+    :Pregenerate review summaries;
+    :ai_review_summaries cache;
+  end split
+else (no)
+  :Đánh cờ needs_review;
+  :Xuất báo cáo lỗi dữ liệu;
+endif
+stop
+@enduml
