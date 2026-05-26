@@ -57,6 +57,35 @@ export type ReviewSummaryResponse = AiReviewSummary & {
   title: string;
 };
 
+export type ChatQueryResponse = {
+  answer: string;
+  applied_filters: {
+    type_slugs: string[];
+    landmark_slugs: string[];
+    zone_slugs: string[];
+    amenity_labels: string[];
+    min_rating: number | null;
+    max_distance_m: number | null;
+    signals: string[];
+  };
+  recommended_places: PlaceSummary[];
+  local_context_used: Array<{
+    slug: string;
+    title: string;
+    subject_kind: string | null;
+    subject_slug: string | null;
+    content: string;
+    tags: string[];
+  }>;
+  follow_up_prompts: string[];
+  meta: {
+    query: string;
+    should_recommend_places?: boolean;
+    semantic_error: string | null;
+    semantic_matches: unknown[];
+  };
+};
+
 export type FetchReviewSummaryOptions = {
   refresh?: boolean;
   useLlm?: boolean;
@@ -321,6 +350,42 @@ export function fetchFiltersMeta() {
 }
 
 const REVIEW_SUMMARY_TIMEOUT_MS = 45_000;
+const CHAT_QUERY_TIMEOUT_MS = 45_000;
+
+export async function fetchChatQuery(query: string, timeoutMs = CHAT_QUERY_TIMEOUT_MS): Promise<ChatQueryResponse> {
+  const url = buildUrl("/chat/query");
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        generate: true,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`AI chat timeout sau ${Math.round(timeoutMs / 1000)}s.`);
+    }
+    throw error;
+  }
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  return (await response.json()) as ChatQueryResponse;
+}
 
 export async function fetchReviewSummary(
   placeId: string,

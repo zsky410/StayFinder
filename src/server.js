@@ -704,7 +704,26 @@ async function getPlaceSummariesByPlaceIdsWithMetrics(
         p.lng,
         p.rating,
         p.reviews_count,
-        COALESCE(p.image_url, '') AS cover_image,
+        COALESCE(
+          (
+            SELECT pi.image_url
+            FROM place_images pi
+            WHERE pi.place_id = p.id
+              AND pi.image_url NOT ILIKE '%streetviewpixels-pa.googleapis.com%'
+              AND pi.image_url NOT ILIKE '%/gps-cs-s/%'
+              AND pi.image_url NOT ILIKE '%/geougc-cs/%'
+            ORDER BY
+              CASE
+                WHEN pi.image_url ILIKE '%/p/%' THEN 0
+                ELSE 1
+              END,
+              pi.sort_order ASC,
+              pi.id ASC
+            LIMIT 1
+          ),
+          p.image_url,
+          ''
+        ) AS cover_image,
         ARRAY(
           SELECT a.label
           FROM place_amenities pa
@@ -763,12 +782,6 @@ async function getPlaceSummariesByPlaceIdsWithMetrics(
 function buildRecommendedPlaceIdOrder(result, limit) {
   const orderedIds = [];
 
-  for (const place of result.structured_candidates || []) {
-    if (place?.place_id) {
-      orderedIds.push(place.place_id);
-    }
-  }
-
   for (const match of result.semantic_matches || []) {
     const semanticPlaceId = match?.google_place_id || null;
     if (semanticPlaceId) {
@@ -776,7 +789,60 @@ function buildRecommendedPlaceIdOrder(result, limit) {
     }
   }
 
+  for (const place of result.structured_candidates || []) {
+    if (place?.place_id) {
+      orderedIds.push(place.place_id);
+    }
+  }
+
   return uniqueStrings(orderedIds).slice(0, limit);
+}
+
+function hasStayRecommendationIntent(queryText, intent = {}) {
+  if (
+    intent.type_slugs?.length ||
+    intent.landmark_slugs?.length ||
+    intent.zone_slugs?.length ||
+    intent.amenity_labels?.length ||
+    intent.min_rating !== null && intent.min_rating !== undefined ||
+    intent.max_distance_m !== null && intent.max_distance_m !== undefined ||
+    intent.signals?.length
+  ) {
+    return true;
+  }
+
+  const normalized = String(queryText || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return [
+    "cho o",
+    "luu tru",
+    "khach san",
+    "homestay",
+    "hostel",
+    "villa",
+    "resort",
+    "can ho",
+    "nha nghi",
+    "nha khach",
+    "phong",
+    "gan bien",
+    "my khe",
+    "an thuong",
+    "san bay",
+    "trung tam",
+    "cau rong",
+    "song han",
+    "gia",
+    "dem",
+    "wifi",
+    "bep",
+    "do xe",
+    "sach",
+    "rong",
+  ].some((keyword) => normalized.includes(keyword));
 }
 
 async function fetchMatchedLandmarksForPlaces(placeIds, landmarkSlugs) {
@@ -820,11 +886,11 @@ async function fetchMatchedLandmarksForPlaces(placeIds, landmarkSlugs) {
 
 function buildFallbackAnswer(queryResult, recommendedPlaces) {
   if (!recommendedPlaces.length) {
-    return "Mình chưa tìm được chỗ phù hợp từ dữ liệu hiện có. Bạn thử nới khoảng cách, giảm bớt tiện ích bắt buộc, hoặc đổi sang một landmark khác ở Đà Nẵng nhé.";
+    return "Mình chưa tìm được chỗ thật sự phù hợp với tiêu chí này. Bạn thử nới khoảng cách, giảm bớt tiện ích bắt buộc, hoặc đổi sang một mốc gần như Cầu Rồng, Mỹ Khê hay sân bay nhé.";
   }
 
   const lines = [
-    `Mình tìm được ${recommendedPlaces.length} lựa chọn khá sát với nhu cầu của bạn trong dataset hiện tại.`,
+    `Mình tìm được ${recommendedPlaces.length} lựa chọn khá sát với nhu cầu của bạn.`,
   ];
 
   for (const place of recommendedPlaces.slice(0, 3)) {
@@ -844,7 +910,7 @@ function buildFallbackAnswer(queryResult, recommendedPlaces) {
   }
 
   if (queryResult.semantic_error) {
-    lines.push("Phần trả lời AI đang thiếu lớp semantic retrieval vì cấu hình embeddings/chat chưa sẵn sàng, nên mình đang tóm tắt theo dữ liệu có cấu trúc.");
+    lines.push("Mình đang ưu tiên các thông tin đã được xác thực trên hồ sơ địa điểm.");
   } else {
     lines.push("Nếu bạn muốn, mình có thể tiếp tục thu hẹp theo khu vực, loại hình, hoặc mốc gần như Cầu Rồng, Mỹ Khê hay sân bay.");
   }
@@ -967,7 +1033,10 @@ async function runChatQuery(payload) {
   }
 
   const result = await runPhase2Json(args);
-  const recommendedPlaceIds = buildRecommendedPlaceIdOrder(result, outputPlaces);
+  const shouldRecommendPlaces = hasStayRecommendationIntent(queryText, result.intent || {});
+  const recommendedPlaceIds = shouldRecommendPlaces
+    ? buildRecommendedPlaceIdOrder(result, outputPlaces)
+    : [];
   const matchedLandmarkByPlaceId = await fetchMatchedLandmarksForPlaces(
     recommendedPlaceIds,
     result.intent?.landmark_slugs || [],
@@ -992,6 +1061,7 @@ async function runChatQuery(payload) {
     follow_up_prompts: buildFollowUpPrompts(result.intent || {}, recommendedPlaces),
     meta: {
       query: queryText,
+      should_recommend_places: shouldRecommendPlaces,
       semantic_error: result.semantic_error || null,
       semantic_matches: (result.semantic_matches || []).slice(0, outputMatches),
     },
