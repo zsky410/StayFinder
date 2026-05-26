@@ -1,43 +1,34 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef, useState } from "react";
-import { Image, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { useRef, useState } from "react";
+import { Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import Animated, { FadeInLeft, FadeInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { SafeImage } from "@/components/safe-image";
 import { theme } from "@/constants/theme";
-import { aiChatDemo } from "@/data/demo-stays";
+import { fetchChatQuery, type PlaceSummary } from "@/lib/stayfinder";
+import { formatPriceText, formatRating, getImageSource } from "@/lib/stayfinder-ui";
+
+const fallbackImage = require("../../assets/results/detail-hero.jpg");
+const headerTitle = "AI Tư vấn Đà Nẵng";
+const statusText = "Đang kết nối RAG";
 
 type ChatMessage = {
   id: string;
   role: "assistant" | "user";
   text: string;
+  recommendedPlaces?: PlaceSummary[];
 };
 
-const suggestionAnchorMessageId = aiChatDemo.messages[1]?.id;
-
-function normalizeText(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-}
-
-function buildAssistantReply(input: string) {
-  const normalized = normalizeText(input);
-
-  if (normalized.includes("thuong luong") || normalized.includes("gia")) {
-    return "Nếu ở 7-10 ngày, nhiều homestay tại Mỹ Khê hoặc An Thượng có thể hỗ trợ giá tốt hơn hoặc miễn phí dọn phòng giữa kỳ. Bạn nên ưu tiên hỏi theo combo ở dài ngày để dễ thương lượng hơn.";
-  }
-
-  if (normalized.includes("song han") || normalized.includes("cau rong")) {
-    return "Nếu bạn thích gần sông Hàn hoặc tiện xem Cầu Rồng, mình sẽ ưu tiên khu Hải Châu và tuyến Bạch Đằng. Khu này đẹp về đêm, nhiều quán ăn và đi bộ ra cầu khá thuận tiện.";
-  }
-
-  if (normalized.includes("gan bien") || normalized.includes("my khe") || normalized.includes("pet")) {
-    return "Mình sẽ ưu tiên các chỗ ở quanh Mỹ Khê, An Thượng và đầu bán đảo Sơn Trà vì vừa gần biển, vừa dễ gọi xe vào trung tâm. Nếu cần, mình có thể lọc tiếp theo tiêu chí pet-friendly hoặc có bếp riêng.";
-  }
-
-  return "Mình có thể tiếp tục lọc theo khu vực, mức giá, tiện nghi hoặc loại hình lưu trú để gợi ý sát hơn. Bạn cứ nhắn thêm 1-2 tiêu chí là mình thu hẹp danh sách ngay.";
-}
+const initialMessages: ChatMessage[] = [
+  {
+    id: "assistant-welcome",
+    role: "assistant",
+    text: "Chào bạn, mình là StayFinder AI. Bạn có thể hỏi về khu vực, tiện nghi, khoảng cách tới biển/sân bay/trung tâm hoặc kiểu chỗ ở ở Đà Nẵng.",
+  },
+];
 
 function AssistantAvatar() {
   return (
@@ -62,10 +53,9 @@ export default function ChatTabRoute() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const scrollViewRef = useRef<ScrollView>(null);
-  const pendingReplyTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const [draftMessage, setDraftMessage] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [...aiChatDemo.messages]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [...initialMessages]);
   const [pendingAssistantReplies, setPendingAssistantReplies] = useState(0);
 
   const hasDraftMessage = draftMessage.trim().length > 0;
@@ -75,17 +65,11 @@ export default function ChatTabRoute() {
   const suggestionCardWidth = Math.min(width - 152, 226);
   const suggestionImageSize = Math.min(76, Math.max(66, width * 0.2));
 
-  useEffect(() => {
-    return () => {
-      pendingReplyTimeoutsRef.current.forEach((timer) => clearTimeout(timer));
-    };
-  }, []);
-
   function scrollToBottom(animated = true) {
     scrollViewRef.current?.scrollToEnd({ animated });
   }
 
-  function handleSendMessage() {
+  async function handleSendMessage() {
     const trimmedMessage = draftMessage.trim();
 
     if (!trimmedMessage) {
@@ -102,20 +86,32 @@ export default function ChatTabRoute() {
     setDraftMessage("");
     setPendingAssistantReplies((count) => count + 1);
 
-    const replyTimer = setTimeout(() => {
+    try {
+      const response = await fetchChatQuery(trimmedMessage);
       setMessages((currentMessages) => [
         ...currentMessages,
         {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          text: buildAssistantReply(trimmedMessage),
+          text: response.answer,
+          recommendedPlaces: response.recommended_places,
         },
       ]);
+    } catch (error) {
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          text:
+            error instanceof Error
+              ? `Mình chưa gọi được AI chat: ${error.message}`
+              : "Mình chưa gọi được AI chat. Bạn thử lại sau nhé.",
+        },
+      ]);
+    } finally {
       setPendingAssistantReplies((count) => Math.max(count - 1, 0));
-      pendingReplyTimeoutsRef.current = pendingReplyTimeoutsRef.current.filter((timer) => timer !== replyTimer);
-    }, 780);
-
-    pendingReplyTimeoutsRef.current.push(replyTimer);
+    }
   }
 
   return (
@@ -152,7 +148,7 @@ export default function ChatTabRoute() {
 
           <View style={{ gap: 2 }}>
             <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "700" }}>
-              {aiChatDemo.headerTitle}
+              {headerTitle}
             </Text>
             <View style={{ alignItems: "center", flexDirection: "row", gap: 7 }}>
               <View
@@ -164,7 +160,7 @@ export default function ChatTabRoute() {
                 }}
               />
               <Text selectable style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "500" }}>
-                {aiChatDemo.statusText}
+                {statusText}
               </Text>
             </View>
           </View>
@@ -179,7 +175,7 @@ export default function ChatTabRoute() {
             textAlign: "center",
           }}
         >
-          {aiChatDemo.timestamp}
+          Hôm nay
         </Text>
 
         {messages.map((message) => {
@@ -207,6 +203,8 @@ export default function ChatTabRoute() {
             );
           }
 
+          const recommendedPlaces = message.recommendedPlaces || [];
+
           return (
             <View key={message.id} style={{ flexDirection: "row", gap: 9 }}>
               <AssistantAvatar />
@@ -231,7 +229,7 @@ export default function ChatTabRoute() {
                   </Text>
                 </Animated.View>
 
-                {message.id === suggestionAnchorMessageId ? (
+                {recommendedPlaces.length ? (
                   <Animated.View entering={FadeInLeft.duration(240)} style={{ gap: 9 }}>
                     <Text
                       selectable
@@ -247,13 +245,13 @@ export default function ChatTabRoute() {
 
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       <View style={{ flexDirection: "row", gap: 12, paddingRight: 8 }}>
-                        {aiChatDemo.suggestions.map((item) => (
+                        {recommendedPlaces.map((item) => (
                           <Pressable
-                            key={item.id}
+                            key={item.place_id}
                             onPress={() =>
                               router.push({
                                 pathname: "/place/[place-id]",
-                                params: { "place-id": item.detailId },
+                                params: { "place-id": item.place_id },
                               })
                             }
                             style={({ pressed }) => ({
@@ -268,8 +266,9 @@ export default function ChatTabRoute() {
                               boxShadow: "0 14px 34px rgba(20, 27, 52, 0.08)",
                             })}
                           >
-                            <Image
-                              source={item.image}
+                            <SafeImage
+                              fallbackSource={fallbackImage}
+                              source={getImageSource(item.cover_image, fallbackImage)}
                               style={{
                                 borderRadius: 12,
                                 height: suggestionImageSize,
@@ -285,20 +284,17 @@ export default function ChatTabRoute() {
                               <View style={{ alignItems: "center", flexDirection: "row", gap: 5 }}>
                                 <Feather color={theme.colors.accent} name="star" size={12} />
                                 <Text selectable style={{ color: theme.colors.accent, fontSize: 11.5, fontWeight: "600" }}>
-                                  {item.rating}
+                                  {formatRating(item.rating)}
                                 </Text>
                                 <Text selectable style={{ color: "#A1A8BD", fontSize: 11.5 }}>•</Text>
                                 <Text selectable numberOfLines={1} style={{ color: theme.colors.muted, flexShrink: 1, fontSize: 11.5, fontWeight: "500" }}>
-                                  {item.area}
+                                  {item.district || item.neighborhood || "Đà Nẵng"}
                                 </Text>
                               </View>
 
                               <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 4 }}>
                                 <Text selectable style={{ color: theme.colors.sun, fontSize: 15, fontWeight: "700" }}>
-                                  {item.priceShort}
-                                </Text>
-                                <Text selectable style={{ color: theme.colors.muted, fontSize: 11.5, fontWeight: "500" }}>
-                                  /đêm
+                                  {formatPriceText(item.price_text)}
                                 </Text>
                               </View>
                             </View>

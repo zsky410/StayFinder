@@ -51,7 +51,7 @@ DEFAULT_CHAT_MODEL = os.environ.get("RAG_CHAT_MODEL") or "gpt-5.4"
 DEFAULT_CHAT_PROVIDER = os.environ.get("RAG_CHAT_PROVIDER") or "openai_compatible"
 DEFAULT_CHAT_BASE_URL = "http://127.0.0.1:8080/v1"
 DEFAULT_CHAT_API_KEY = "pwd"
-DEFAULT_PROMPT_VERSION = "phase2-v1"
+DEFAULT_PROMPT_VERSION = "phase2-v2-review-only"
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 180
 
@@ -1154,9 +1154,15 @@ def maybe_generate_answer(
     prompt = [
         (
             "system",
-            "You are StayFinder's Da Nang lodging assistant. Answer only from the provided context. "
-            "Do not invent prices, amenities, or travel times. Distances are bird-flight haversine distances, "
-            "so say that explicitly when you mention them. If data is missing, say you do not have that data yet.",
+            "You are StayFinder's Da Nang lodging assistant for a consumer mobile app. "
+            "Answer naturally in Vietnamese unless the user asks for another language. "
+            "For lodging questions, answer only from the provided context and do not invent prices, "
+            "amenities, policies, safety claims, or travel times. Distances are bird-flight haversine "
+            "distances, so say that explicitly when you mention them. If a detail is not supported, "
+            "use customer-facing wording such as 'mình chưa thể xác nhận thông tin đó trên hồ sơ hiện tại' "
+            "or suggest a next filter; do not say dataset, database, RAG, chunks, embeddings, model, "
+            "developer, backend, prompt, or internal data. For greetings or capability questions, answer "
+            "briefly and steer back to helping with places to stay in Da Nang.",
         ),
         ("human", f"{context_text}\n\nPlease answer the user query: {query}"),
     ]
@@ -1291,42 +1297,23 @@ def fetch_cached_summary(conn, place_uuid: str) -> dict[str, Any] | None:
 
 
 def build_fallback_summary(place: dict[str, Any]) -> dict[str, Any]:
-    title = place.get("title") or "Unknown place"
-    type_slug = place.get("type_slug") or "stay"
-    rating = as_float(place.get("rating"))
     reviews_count = as_int(place.get("reviews_count")) or 0
     amenities = place.get("amenities") or []
-    landmarks = place.get("landmarks")[:3]
     snippets = select_review_snippets(place.get("reviews") or [], limit=3)
 
-    summary_parts = [
-        f"{title} là một {type_slug} tại {place.get('district') or place.get('neighborhood') or 'Đà Nẵng'}."
-    ]
-    if rating is not None:
-        summary_parts.append(f"Điểm tổng thể hiện có là {rating:.2f}/5 từ {reviews_count} review.")
-    elif reviews_count:
-        summary_parts.append(f"Hiện có {reviews_count} review mẫu trong dataset.")
-    if amenities:
-        summary_parts.append(f"Điểm nổi bật trong dữ liệu gồm: {', '.join(amenities[:5])}.")
-    if landmarks:
-        first_landmark = landmarks[0]
-        summary_parts.append(
-            f"Khoảng cách gần nhất theo đường chim bay là tới {first_landmark['name']} khoảng "
-            f"{format_distance_m(first_landmark['distance_m'])}."
-        )
+    summary_parts: list[str] = []
     if snippets:
-        summary_parts.append(f"Review mẫu thường nhắc tới: {snippets[0]}")
+        summary_parts.append(f"Khách thường nhắc tới: {snippets[0]}")
+    if len(snippets) > 1:
+        summary_parts.append(f"Một số nhận xét khác ghi nhận: {snippets[1]}")
+    if amenities:
+        summary_parts.append(f"Tiện nghi nổi bật được dữ liệu ghi nhận gồm {', '.join(amenities[:4])}.")
+    if not summary_parts:
+        summary_parts.append("Chưa có đủ nội dung review chi tiết để rút ra nhận xét đáng tin cậy.")
 
     bullets: list[str] = []
-    bullets.extend(amenities[:3])
-    for landmark in landmarks[:2]:
-        bullets.append(
-            f"Gần {landmark['name']} ({format_distance_m(landmark['distance_m'])}, đường chim bay)"
-        )
-    if not place.get("website"):
-        bullets.append("Chưa có website trong dataset hiện tại")
-    if not place.get("price_text"):
-        bullets.append("Coverage giá trực tiếp trong dataset còn hạn chế")
+    bullets.extend(snippets[1:4])
+    bullets.extend([f"Tiện nghi được nhắc trong dữ liệu: {item}" for item in amenities[:3]])
 
     return {
         "summary_text": " ".join(summary_parts),
@@ -1344,19 +1331,8 @@ def build_fallback_summary(place: dict[str, Any]) -> dict[str, Any]:
 def generate_llm_review_summary(place: dict[str, Any], *, model_name: str) -> dict[str, Any]:
     ensure_chat_credentials()
     snippets = select_review_snippets(place.get("reviews") or [], limit=6)
-    landmarks = [
-        f"{entry['name']} ({format_distance_m(entry['distance_m'])}, bird-flight)"
-        for entry in place.get("landmarks")[:4]
-    ]
     prompt_context = {
-        "title": place.get("title"),
-        "type_slug": place.get("type_slug"),
-        "district": place.get("district"),
-        "neighborhood": place.get("neighborhood"),
-        "rating": as_float(place.get("rating")),
-        "reviews_count": as_int(place.get("reviews_count")),
         "amenities": place.get("amenities")[:12],
-        "nearest_landmarks": landmarks,
         "review_snippets": snippets,
     }
 
@@ -1365,8 +1341,12 @@ def generate_llm_review_summary(place: dict[str, Any], *, model_name: str) -> di
         (
             "system",
             "You summarize hotel/review data for StayFinder. Only use provided data. "
-            "Return JSON with keys summary_text and bullets. Mention bird-flight distance explicitly "
-            "if you mention distances. Do not invent price, booking policy, or safety claims.",
+            "Return compact Vietnamese JSON with keys summary_text and bullets. Focus only on useful "
+            "insights extracted from review_snippets: what guests praise, complain about, and practical "
+            "tradeoffs. Do not repeat the place name, type/category, district/neighborhood/address, rating, "
+            "review count, model name, or generic facts already shown elsewhere in the detail screen. "
+            "Mention amenities only when reviews or supplied data make them useful context. Do not invent "
+            "price, booking policy, distance, location, or safety claims.",
         ),
         ("human", json.dumps(prompt_context, ensure_ascii=False)),
     ]

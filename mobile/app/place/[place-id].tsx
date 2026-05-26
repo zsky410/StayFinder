@@ -1,15 +1,19 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Linking,
+  Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Pressable,
   ScrollView,
   Text,
   View,
   type DimensionValue,
   type ViewStyle,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -284,13 +288,16 @@ function PlaceDetailSkeleton({
 
 export default function PlaceDetailRoute() {
   const insets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const params = useLocalSearchParams<{ "place-id"?: string | string[] }>();
   const placeId = getPlaceId(params["place-id"]);
+  const galleryScrollRef = useRef<ScrollView>(null);
 
   const [place, setPlace] = useState<PlaceDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isGalleryExpanded, setIsGalleryExpanded] = useState(false);
+  const [galleryModalIndex, setGalleryModalIndex] = useState<number | null>(null);
   const [isReviewsExpanded, setIsReviewsExpanded] = useState(false);
   const [aiSummary, setAiSummary] = useState<AiReviewSummary | null>(null);
   const [isAiSummaryLoading, setIsAiSummaryLoading] = useState(false);
@@ -336,7 +343,7 @@ export default function PlaceDetailRoute() {
   }, [placeId]);
 
   const generateAiSummary = useCallback(
-    async ({ refresh = false }: { refresh?: boolean } = {}) => {
+    async () => {
       const targetPlaceId = place?.place_id || placeId;
       if (!targetPlaceId || isAiSummaryLoading) {
         return;
@@ -347,7 +354,7 @@ export default function PlaceDetailRoute() {
 
       try {
         const summary = await fetchReviewSummary(targetPlaceId, {
-          refresh,
+          refresh: false,
           useLlm: true,
         });
         setAiSummary({
@@ -395,6 +402,15 @@ export default function PlaceDetailRoute() {
 
     return uniqueUrls.filter((url) => url === coverImageUrl || !reviewImageSet.has(url));
   }, [place, reviewImageSet]);
+  const selectedGalleryIndex =
+    galleryModalIndex === null
+      ? 0
+      : Math.min(Math.max(galleryModalIndex, 0), Math.max(galleryImages.length - 1, 0));
+  const isGalleryModalVisible = galleryModalIndex !== null && galleryImages.length > 0;
+  const galleryModalImageHeight = Math.max(
+    260,
+    viewportHeight - Math.max(insets.top, 24) - Math.max(insets.bottom, 16) - 158,
+  );
   const heroSource = useMemo(() => {
     const heroImageUrl = galleryImages[0] || place?.cover_image || null;
     return getImageSource(heroImageUrl, detailHeroImage);
@@ -405,6 +421,34 @@ export default function PlaceDetailRoute() {
     }
     return isReviewsExpanded ? place.reviews_sample : place.reviews_sample.slice(0, 2);
   }, [isReviewsExpanded, place]);
+  const openGalleryModal = useCallback((index: number) => {
+    setGalleryModalIndex(index);
+  }, []);
+  const closeGalleryModal = useCallback(() => {
+    setGalleryModalIndex(null);
+  }, []);
+  const handleGalleryMomentumEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const nextIndex = Math.round(event.nativeEvent.contentOffset.x / Math.max(viewportWidth, 1));
+      setGalleryModalIndex(Math.min(Math.max(nextIndex, 0), Math.max(galleryImages.length - 1, 0)));
+    },
+    [galleryImages.length, viewportWidth],
+  );
+
+  useEffect(() => {
+    if (!isGalleryModalVisible) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      galleryScrollRef.current?.scrollTo({
+        animated: false,
+        x: selectedGalleryIndex * viewportWidth,
+      });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [isGalleryModalVisible, selectedGalleryIndex, viewportWidth]);
 
   if (isLoading) {
     return (
@@ -633,7 +677,7 @@ export default function PlaceDetailRoute() {
                 />
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text selectable style={{ color: theme.colors.ink, fontSize: 16, fontWeight: "600" }}>
-                    {aiSummary?.source === "cache" ? "Tóm tắt từ cache AI" : "Tóm tắt AI từ review"}
+                    Tóm tắt AI từ review
                   </Text>
                   {isAiSummaryLoading && !aiSummary ? (
                     <Text style={{ color: theme.colors.muted, fontSize: 14, lineHeight: 22 }}>
@@ -674,50 +718,14 @@ export default function PlaceDetailRoute() {
                   borderTopWidth: aiSummary?.bullets?.length ? 0 : 1,
                   flexDirection: "row",
                   gap: 10,
-                  justifyContent: "space-between",
                   paddingTop: aiSummary?.bullets?.length ? 4 : 12,
                 }}
               >
                 <Text style={{ color: theme.colors.muted, flex: 1, fontSize: 12, lineHeight: 18 }}>
-                  {aiSummary?.model
-                    ? `Model: ${aiSummary.model}${
-                        aiSummary.source_review_count
-                          ? ` · ${aiSummary.source_review_count} review`
-                          : ""
-                      }`
-                    : "Sinh AI dựa trên review thực tế từ dataset."}
+                  {aiSummary
+                    ? "Dựa trên nội dung review thực tế từ dataset."
+                    : "AI sẽ tự tạo tóm tắt khi địa điểm chưa có cache."}
                 </Text>
-                <Pressable
-                  accessibilityLabel={aiSummary ? "Tạo lại tóm tắt AI" : "Tạo tóm tắt AI"}
-                  disabled={isAiSummaryLoading}
-                  hitSlop={8}
-                  onPress={() => {
-                    generateAiSummary({ refresh: aiSummary !== null }).catch(() => undefined);
-                  }}
-                  style={({ pressed }) => ({
-                    alignItems: "center",
-                    backgroundColor: theme.colors.accent,
-                    borderRadius: 999,
-                    flexDirection: "row",
-                    gap: 6,
-                    opacity: isAiSummaryLoading ? 0.6 : pressed ? 0.85 : 1,
-                    paddingHorizontal: 14,
-                    paddingVertical: 8,
-                  })}
-                >
-                  <MaterialCommunityIcons
-                    color="#FFFFFF"
-                    name={isAiSummaryLoading ? "loading" : aiSummary ? "refresh" : "creation"}
-                    size={15}
-                  />
-                  <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "600" }}>
-                    {isAiSummaryLoading
-                      ? "Đang sinh..."
-                      : aiSummary
-                        ? "Tạo lại tóm tắt"
-                        : "Tạo tóm tắt"}
-                  </Text>
-                </Pressable>
               </View>
             </View>
           </View>
@@ -799,17 +807,25 @@ export default function PlaceDetailRoute() {
               <View style={{ flexDirection: "row", gap: 12, paddingRight: 4 }}>
                 {galleryImages.length ? (
                   (isGalleryExpanded ? galleryImages : galleryImages.slice(0, 6)).map((imageUrl, index) => (
-                    <SafeImage
-                      fallbackSource={detailHeroImage}
+                    <Pressable
+                      accessibilityLabel={`Mở ảnh ${index + 1}`}
                       key={`${index}-${imageUrl}`}
-                      source={getImageSource(imageUrl, detailHeroImage)}
-                      style={{
-                        backgroundColor: "#E9EEF8",
-                        borderRadius: 18,
-                        height: 128,
-                        width: 188,
-                      }}
-                    />
+                      onPress={() => openGalleryModal(index)}
+                      style={({ pressed }) => ({
+                        opacity: pressed ? 0.9 : 1,
+                      })}
+                    >
+                      <SafeImage
+                        fallbackSource={detailHeroImage}
+                        source={getImageSource(imageUrl, detailHeroImage)}
+                        style={{
+                          backgroundColor: "#E9EEF8",
+                          borderRadius: 18,
+                          height: 128,
+                          width: 188,
+                        }}
+                      />
+                    </Pressable>
                   ))
                 ) : (
                   <View
@@ -964,6 +980,124 @@ export default function PlaceDetailRoute() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={closeGalleryModal}
+        transparent
+        visible={isGalleryModalVisible}
+      >
+        <View
+          style={{
+            backgroundColor: "rgba(5, 9, 22, 0.96)",
+            flex: 1,
+            paddingBottom: Math.max(insets.bottom, 16),
+            paddingTop: Math.max(insets.top, 20),
+          }}
+        >
+          <View
+            style={{
+              alignItems: "center",
+              flexDirection: "row",
+              justifyContent: "space-between",
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>
+              {selectedGalleryIndex + 1} / {galleryImages.length}
+            </Text>
+            <Pressable
+              accessibilityLabel="Đóng ảnh"
+              hitSlop={10}
+              onPress={closeGalleryModal}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: "rgba(255,255,255,0.16)",
+                borderRadius: 999,
+                height: 40,
+                justifyContent: "center",
+                opacity: pressed ? 0.8 : 1,
+                width: 40,
+              })}
+            >
+              <Feather color="#FFFFFF" name="x" size={22} />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            ref={galleryScrollRef}
+            horizontal
+            onMomentumScrollEnd={handleGalleryMomentumEnd}
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0, height: galleryModalImageHeight }}
+          >
+            {galleryImages.map((imageUrl, index) => (
+              <View
+                key={`modal-${index}-${imageUrl}`}
+                style={{
+                  alignItems: "center",
+                  height: galleryModalImageHeight,
+                  justifyContent: "center",
+                  width: viewportWidth,
+                }}
+              >
+                <SafeImage
+                  fallbackSource={detailHeroImage}
+                  resizeMode="contain"
+                  source={getImageSource(imageUrl, detailHeroImage)}
+                  style={{
+                    height: galleryModalImageHeight,
+                    width: viewportWidth,
+                  }}
+                />
+              </View>
+            ))}
+          </ScrollView>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={{
+              gap: 10,
+              paddingHorizontal: 16,
+              paddingTop: 14,
+            }}
+          >
+            {galleryImages.map((imageUrl, index) => {
+              const isSelected = index === selectedGalleryIndex;
+
+              return (
+                <Pressable
+                  accessibilityLabel={`Chọn ảnh ${index + 1}`}
+                  key={`thumb-${index}-${imageUrl}`}
+                  onPress={() => setGalleryModalIndex(index)}
+                  style={({ pressed }) => ({
+                    borderColor: isSelected ? "#FFFFFF" : "rgba(255,255,255,0.22)",
+                    borderRadius: 12,
+                    borderWidth: isSelected ? 2 : 1,
+                    opacity: pressed ? 0.78 : 1,
+                    padding: 2,
+                  })}
+                >
+                  <SafeImage
+                    fallbackSource={detailHeroImage}
+                    source={getImageSource(imageUrl, detailHeroImage)}
+                    style={{
+                      backgroundColor: "rgba(255,255,255,0.12)",
+                      borderRadius: 9,
+                      height: 58,
+                      width: 76,
+                    }}
+                  />
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </Modal>
 
       <View
         style={{
