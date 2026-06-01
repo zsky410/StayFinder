@@ -155,7 +155,10 @@ export type PlacesQuery = {
 type ExpoConstantsWithHost = typeof Constants & {
   expoConfig?: {
     hostUri?: string | null;
-    extra?: { apiPort?: string | number | null } | null;
+    extra?: {
+      apiPort?: string | number | null;
+      apiBaseUrl?: string | null;
+    } | null;
   } | null;
   manifest2?: {
     extra?: {
@@ -163,6 +166,7 @@ type ExpoConstantsWithHost = typeof Constants & {
     } | null;
   } | null;
   manifest?: { debuggerHost?: string | null } | null;
+  linkingUri?: string | null;
 };
 
 function extractHost(rawValue: string | null | undefined) {
@@ -182,32 +186,67 @@ function extractHost(rawValue: string | null | undefined) {
   return value.split("/")[0]?.split(":")[0] || null;
 }
 
+function normalizeBaseUrl(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function buildHttpBaseUrl(host: string, port: string) {
+  return normalizeBaseUrl(`http://${host}:${port}`);
+}
+
 function resolveApiBaseUrl() {
   const explicitBaseUrl = String(process.env.EXPO_PUBLIC_API_BASE_URL || "").trim();
   if (explicitBaseUrl) {
-    return explicitBaseUrl.replace(/\/+$/, "");
+    return normalizeBaseUrl(explicitBaseUrl);
   }
 
   const constants = Constants as ExpoConstantsWithHost;
+  const manifestBaseUrl = String(constants.expoConfig?.extra?.apiBaseUrl ?? "").trim();
+  if (manifestBaseUrl) {
+    return normalizeBaseUrl(manifestBaseUrl);
+  }
+
   const apiPort =
     String(process.env.EXPO_PUBLIC_API_PORT || "").trim() ||
     String(constants.expoConfig?.extra?.apiPort ?? "").trim() ||
     "3000";
-  const detectedHost = extractHost(
-    constants.expoConfig?.hostUri ||
-      constants.manifest2?.extra?.expoClient?.hostUri ||
-      constants.manifest?.debuggerHost,
-  );
+  const candidateHosts = [
+    constants.expoConfig?.hostUri,
+    constants.manifest2?.extra?.expoClient?.hostUri,
+    constants.linkingUri,
+    constants.manifest?.debuggerHost,
+  ];
 
-  if (detectedHost) {
-    return `http://${detectedHost}:${apiPort}`;
+  for (const candidate of candidateHosts) {
+    const detectedHost = extractHost(candidate);
+    if (detectedHost && detectedHost !== "127.0.0.1" && detectedHost !== "localhost") {
+      return buildHttpBaseUrl(detectedHost, apiPort);
+    }
   }
 
-  return `http://127.0.0.1:${apiPort}`;
+  const debuggerHost = extractHost(constants.manifest?.debuggerHost);
+  if (debuggerHost) {
+    return buildHttpBaseUrl(debuggerHost, apiPort);
+  }
+
+  return buildHttpBaseUrl("127.0.0.1", apiPort);
 }
 
 export const stayfinderApiBaseUrl = resolveApiBaseUrl();
 const REQUEST_TIMEOUT_MS = 8000;
+
+function formatNetworkError(error: unknown, url: string, label: string) {
+  if (error instanceof Error) {
+    if (error.name === "AbortError") {
+      return `${label} timeout: ${url}`;
+    }
+    if (error.message === "Network request failed") {
+      return `${label} network failed: ${url}`;
+    }
+    return `${error.message} (${url})`;
+  }
+  return `${label} failed: ${url}`;
+}
 
 function appendQueryValue(searchParams: URLSearchParams, key: string, values: string[]) {
   for (const value of values) {
@@ -303,7 +342,7 @@ async function fetchJson<T>(pathname: string, init?: RequestInit): Promise<T> {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`API timeout after ${REQUEST_TIMEOUT_MS / 1000}s: ${url}`);
     }
-    throw error;
+    throw new Error(formatNetworkError(error, url, "API request"));
   }
   clearTimeout(timeoutId);
 
@@ -330,7 +369,7 @@ export async function fetchPlaces(query: PlacesQuery = {}) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`API timeout after ${REQUEST_TIMEOUT_MS / 1000}s: ${url}`);
     }
-    throw error;
+    throw new Error(formatNetworkError(error, url, "Places request"));
   }
   clearTimeout(timeoutId);
 
@@ -376,7 +415,7 @@ export async function fetchChatQuery(query: string, timeoutMs = CHAT_QUERY_TIMEO
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`AI chat timeout sau ${Math.round(timeoutMs / 1000)}s.`);
     }
-    throw error;
+    throw new Error(formatNetworkError(error, url, "AI chat request"));
   }
   clearTimeout(timeoutId);
 
@@ -416,7 +455,7 @@ export async function fetchReviewSummary(
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`AI summary timeout sau ${Math.round(timeoutMs / 1000)}s.`);
     }
-    throw error;
+    throw new Error(formatNetworkError(error, url, "AI summary request"));
   }
   clearTimeout(timeoutId);
 

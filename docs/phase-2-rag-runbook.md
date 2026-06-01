@@ -47,11 +47,11 @@ Cho embedding:
 Cho generate answer / review summary:
 
 - mặc định repo hiện support `openai_compatible`
-- nếu dùng local gateway như `http://127.0.0.1:8080/v1`:
+- nếu dùng local gateway như `http://127.0.0.1:39647/v1`:
   - `RAG_CHAT_PROVIDER=openai_compatible`
-  - `RAG_CHAT_API_KEY=pwd`
-  - `RAG_CHAT_BASE_URL=http://127.0.0.1:8080/v1`
-  - `RAG_CHAT_MODEL=gpt-5.4`
+  - `RAG_CHAT_API_KEY=agt_codex_your_local_gateway_key`
+  - `RAG_CHAT_BASE_URL=http://127.0.0.1:39647/v1`
+  - `RAG_CHAT_MODEL=gpt-5.5`
 - nếu muốn dùng Anthropic trực tiếp:
   - `RAG_CHAT_PROVIDER=anthropic`
   - `ANTHROPIC_API_KEY=...`
@@ -60,7 +60,7 @@ Biến tùy chọn:
 
 - `RAG_EMBED_MODEL=text-embedding-3-small`
 - `RAG_EMBED_BASE_URL=...`
-- `RAG_CHAT_MODEL=gpt-5.4`
+- `RAG_CHAT_MODEL=gpt-5.5`
 
 ## 3. Build chunk index
 
