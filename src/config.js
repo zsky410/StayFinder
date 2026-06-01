@@ -63,4 +63,7 @@ export const config = {
   ),
   publicDefaultPageSize: parseInteger(process.env.PUBLIC_DEFAULT_PAGE_SIZE, 20),
   publicMaxPageSize: parseInteger(process.env.PUBLIC_MAX_PAGE_SIZE, 50),
+  osrmBaseUrl: process.env.OSRM_BASE_URL || "https://router.project-osrm.org",
+  osrmTimeoutMs: parseInteger(process.env.OSRM_TIMEOUT_MS, 8000),
+  osrmMaxPairsPerRebuild: parseInteger(process.env.OSRM_MAX_PAIRS_PER_REBUILD, 200),
 };

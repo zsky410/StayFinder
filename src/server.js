@@ -179,6 +179,10 @@ async function handleAdminJobRequest(req, res, type, runner, validator = null) {
 
 function mapPlaceSummaryRow(row) {
   const coverImage = pickBestPublicImageUrl([row.cover_image]);
+  const requestedDistance =
+    row.requested_landmark_distance_m === null
+      ? null
+      : Number(row.requested_landmark_distance_m);
 
   return {
     id: row.id,
@@ -196,11 +200,31 @@ function mapPlaceSummaryRow(row) {
     cover_image: coverImage,
     amenities_preview: row.amenities_preview || [],
     nearest_landmarks: row.nearest_landmarks || [],
-    requested_landmark_distance_m:
-      row.requested_landmark_distance_m === null
-        ? null
-        : Number(row.requested_landmark_distance_m),
+    requested_landmark_distance_m: requestedDistance,
   };
+}
+
+function resolveMetricDistance(metric) {
+  if (!metric || typeof metric !== "object") {
+    return null;
+  }
+
+  if (metric.walking_distance_m !== null && metric.walking_distance_m !== undefined) {
+    return Number(metric.walking_distance_m);
+  }
+  if (metric.driving_distance_m !== null && metric.driving_distance_m !== undefined) {
+    return Number(metric.driving_distance_m);
+  }
+  if (metric.distance_m !== null && metric.distance_m !== undefined) {
+    return Number(metric.distance_m);
+  }
+  return null;
+}
+
+function normalizeMetricForResponse(metric) {
+  const normalized = { ...metric };
+  normalized.display_distance_m = resolveMetricDistance(metric);
+  return normalized;
 }
 
 function buildPlaceFilterContext(filters) {
@@ -249,7 +273,7 @@ function buildPlaceFilterContext(filters) {
     landmarkRef = bag.push(filters.landmarkSlugs);
     let distanceSql = "";
     if (filters.maxDistanceM !== null) {
-      distanceSql = ` AND COALESCE(plm.distance_m, 999999999) <= ${bag.push(filters.maxDistanceM)}`;
+      distanceSql = ` AND COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m, 999999999) <= ${bag.push(filters.maxDistanceM)}`;
     }
 
     where.push(`EXISTS (
@@ -299,7 +323,7 @@ async function listPlaces(filters, { includeBatchKey = false } = {}) {
   const context = buildPlaceFilterContext(filters);
   const requestedDistanceSql = context.landmarkRef
     ? `(
-        SELECT MIN(plm.distance_m)
+        SELECT MIN(COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m))
         FROM place_landmark_metrics plm
         JOIN local_landmarks l ON l.id = plm.landmark_id
         WHERE plm.place_id = p.id
@@ -375,23 +399,28 @@ async function listPlaces(filters, { includeBatchKey = false } = {}) {
               json_build_object(
                 'landmark_slug', near.slug,
                 'landmark_name', near.name,
-                'distance_m', near.distance_m,
+                'distance_m', COALESCE(near.walking_distance_m, near.driving_distance_m, near.distance_m),
+                'straight_line_distance_m', near.distance_m,
+                'walking_distance_m', near.walking_distance_m,
+                'driving_distance_m', near.driving_distance_m,
                 'method', near.method,
                 'anchor_label', near.anchor_label
               )
-              ORDER BY near.distance_m ASC NULLS LAST, near.slug ASC
+              ORDER BY COALESCE(near.walking_distance_m, near.driving_distance_m, near.distance_m) ASC NULLS LAST, near.slug ASC
             )
             FROM (
               SELECT
                 l.slug,
                 l.name,
                 plm.distance_m,
+                plm.walking_distance_m,
+                plm.driving_distance_m,
                 plm.method,
                 plm.anchor_label
               FROM place_landmark_metrics plm
               JOIN local_landmarks l ON l.id = plm.landmark_id
               WHERE plm.place_id = p.id
-              ORDER BY plm.distance_m ASC NULLS LAST, l.slug ASC
+              ORDER BY COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m) ASC NULLS LAST, l.slug ASC
               LIMIT 3
             ) AS near
           ),
@@ -507,11 +536,14 @@ async function getPlaceDetail(identifier) {
               json_build_object(
                 'landmark_slug', lm.slug,
                 'landmark_name', lm.name,
-                'distance_m', plm.distance_m,
+                'distance_m', COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m),
+                'straight_line_distance_m', plm.distance_m,
+                'walking_distance_m', plm.walking_distance_m,
+                'driving_distance_m', plm.driving_distance_m,
                 'method', plm.method,
                 'anchor_label', plm.anchor_label
               )
-              ORDER BY plm.distance_m ASC NULLS LAST, lm.slug ASC
+              ORDER BY COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m) ASC NULLS LAST, lm.slug ASC
             )
             FROM place_landmark_metrics plm
             JOIN local_landmarks lm ON lm.id = plm.landmark_id
@@ -738,23 +770,28 @@ async function getPlaceSummariesByPlaceIdsWithMetrics(
               json_build_object(
                 'landmark_slug', near.slug,
                 'landmark_name', near.name,
-                'distance_m', near.distance_m,
+                'distance_m', COALESCE(near.walking_distance_m, near.driving_distance_m, near.distance_m),
+                'straight_line_distance_m', near.distance_m,
+                'walking_distance_m', near.walking_distance_m,
+                'driving_distance_m', near.driving_distance_m,
                 'method', near.method,
                 'anchor_label', near.anchor_label
               )
-              ORDER BY near.distance_m ASC NULLS LAST, near.slug ASC
+              ORDER BY COALESCE(near.walking_distance_m, near.driving_distance_m, near.distance_m) ASC NULLS LAST, near.slug ASC
             )
             FROM (
               SELECT
                 l.slug,
                 l.name,
                 plm.distance_m,
+                plm.walking_distance_m,
+                plm.driving_distance_m,
                 plm.method,
                 plm.anchor_label
               FROM place_landmark_metrics plm
               JOIN local_landmarks l ON l.id = plm.landmark_id
               WHERE plm.place_id = p.id
-              ORDER BY plm.distance_m ASC NULLS LAST, l.slug ASC
+              ORDER BY COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m) ASC NULLS LAST, l.slug ASC
               LIMIT 3
             ) AS near
           ),
@@ -858,7 +895,10 @@ async function fetchMatchedLandmarksForPlaces(placeIds, landmarkSlugs) {
         p.place_id,
         lm.slug AS landmark_slug,
         lm.name AS landmark_name,
-        plm.distance_m,
+        COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m) AS distance_m,
+        plm.distance_m AS straight_line_distance_m,
+        plm.walking_distance_m,
+        plm.driving_distance_m,
         plm.method,
         plm.anchor_label
       FROM places p
@@ -866,7 +906,7 @@ async function fetchMatchedLandmarksForPlaces(placeIds, landmarkSlugs) {
       JOIN local_landmarks lm ON lm.id = plm.landmark_id
       WHERE p.place_id = ANY($1::text[])
         AND lm.slug = ANY($2::text[])
-      ORDER BY p.place_id, plm.distance_m ASC NULLS LAST, lm.slug ASC`,
+      ORDER BY p.place_id, COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m) ASC NULLS LAST, lm.slug ASC`,
     [cleanedPlaceIds, cleanedLandmarkSlugs],
   );
 
@@ -876,6 +916,12 @@ async function fetchMatchedLandmarksForPlaces(placeIds, landmarkSlugs) {
       landmark_slug: row.landmark_slug,
       landmark_name: row.landmark_name,
       distance_m: row.distance_m === null ? null : Number(row.distance_m),
+      straight_line_distance_m:
+        row.straight_line_distance_m === null ? null : Number(row.straight_line_distance_m),
+      walking_distance_m:
+        row.walking_distance_m === null ? null : Number(row.walking_distance_m),
+      driving_distance_m:
+        row.driving_distance_m === null ? null : Number(row.driving_distance_m),
       method: row.method,
       anchor_label: row.anchor_label,
     });
@@ -1593,13 +1639,104 @@ async function rerunDistanceJob(payload) {
     ],
   );
 
+  const routedPairs = await enrichRouteDistances({
+    placeIds: targets.map((item) => item.id),
+    landmarkSlugs: landmarkSlugs.length ? landmarkSlugs : null,
+  });
+
   return {
     job: "distance",
     batch_key: batchKey,
     place_count: targets.length,
     landmark_slugs: landmarkSlugs,
     affected_rows: Number(result.rows[0]?.affected_rows || 0),
+    routed_pairs: routedPairs,
   };
+}
+
+async function fetchOsrmRoute(profile, fromLng, fromLat, toLng, toLat) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.osrmTimeoutMs);
+  try {
+    const url = `${config.osrmBaseUrl.replace(/\/$/, "")}/route/v1/${profile}/${fromLng},${fromLat};${toLng},${toLat}?overview=false&steps=false`;
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "codex-crawl/1.0",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`OSRM ${profile} request failed with ${response.status}`);
+    }
+    const payload = await response.json();
+    const route = payload?.routes?.[0];
+    if (!route || !Number.isFinite(route.distance) || !Number.isFinite(route.duration)) {
+      throw new Error(`OSRM ${profile} response missing route data`);
+    }
+    return {
+      distance_m: Math.round(route.distance),
+      duration_s: Math.round(route.duration),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function enrichRouteDistances({ placeIds, landmarkSlugs = null }) {
+  const result = await query(
+    `SELECT
+        plm.id::text AS metric_id,
+        p.lat AS place_lat,
+        p.lng AS place_lng,
+        plm.anchor_lat,
+        plm.anchor_lng
+      FROM place_landmark_metrics plm
+      JOIN places p ON p.id = plm.place_id
+      JOIN local_landmarks l ON l.id = plm.landmark_id
+      WHERE plm.place_id = ANY($1::uuid[])
+        AND l.kind = 'point'
+        AND p.lat IS NOT NULL
+        AND p.lng IS NOT NULL
+        AND plm.anchor_lat IS NOT NULL
+        AND plm.anchor_lng IS NOT NULL
+        AND ($2::text[] IS NULL OR l.slug = ANY($2::text[]))
+      ORDER BY plm.distance_m ASC NULLS LAST
+      LIMIT $3`,
+    [placeIds, landmarkSlugs, config.osrmMaxPairsPerRebuild],
+  );
+
+  let updated = 0;
+  for (const row of result.rows) {
+    try {
+      const [walking, driving] = await Promise.all([
+        fetchOsrmRoute("foot", row.place_lng, row.place_lat, row.anchor_lng, row.anchor_lat),
+        fetchOsrmRoute("driving", row.place_lng, row.place_lat, row.anchor_lng, row.anchor_lat),
+      ]);
+
+      await query(
+        `UPDATE place_landmark_metrics
+         SET walking_distance_m = $2,
+             walking_duration_s = $3,
+             driving_distance_m = $4,
+             driving_duration_s = $5,
+             source = 'osrm',
+             computed_at = now()
+         WHERE id = $1::uuid`,
+        [
+          row.metric_id,
+          walking.distance_m,
+          walking.duration_s,
+          driving.distance_m,
+          driving.duration_s,
+        ],
+      );
+      updated += 1;
+    } catch (_error) {
+      // Keep geodesic fallback for rows that fail OSRM enrichment.
+    }
+  }
+
+  return updated;
 }
 
 function ensureJobTarget(batchKey, placeIds, titleSearch = "") {
