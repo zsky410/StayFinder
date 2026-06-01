@@ -1,7 +1,8 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ImageBackground,
@@ -10,6 +11,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  type TextInputProps,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -37,6 +39,13 @@ const nearbyFallbackImages = [
   require("../../assets/home/nearby-homestay.jpg"),
   require("../../assets/home/featured-beach.jpg"),
 ] as const;
+const liveSearchFallbackImage = require("../../assets/results/coral-studio.jpg");
+const LIVE_SEARCH_MIN_QUERY_LENGTH = 2;
+const LIVE_SEARCH_LIMIT = 5;
+const LIVE_SEARCH_DEBOUNCE_MS = 140;
+const LIVE_SEARCH_CACHE_TTL_MS = 45_000;
+const RECENT_SEARCH_LIMIT = 5;
+const RECENT_SEARCHES_STORAGE_KEY = "stayfinder:recent-searches";
 
 const quickFilters = [
   {
@@ -55,6 +64,39 @@ const quickFilters = [
     typeSlug: "nha-nghi",
   },
 ] as const;
+
+function normalizeVietnameseText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function renderHighlightedText(text: string, query: string) {
+  const rawText = String(text || "");
+  const rawQuery = String(query || "").trim();
+
+  if (!rawText || !rawQuery) {
+    return rawText;
+  }
+
+  const normalizedText = normalizeVietnameseText(rawText);
+  const normalizedQuery = normalizeVietnameseText(rawQuery);
+  const startIndex = normalizedText.indexOf(normalizedQuery);
+
+  if (startIndex < 0) {
+    return rawText;
+  }
+
+  const endIndex = startIndex + rawQuery.length;
+
+  return (
+    <>
+      {rawText.slice(0, startIndex)}
+      <Text style={{ color: theme.colors.accent, fontWeight: "800" }}>
+        {rawText.slice(startIndex, endIndex)}
+      </Text>
+      {rawText.slice(endIndex)}
+    </>
+  );
+}
 
 function SectionHeader({ title, actionLabel }: { title: string; actionLabel?: string }) {
   return (
@@ -76,11 +118,15 @@ function SearchBar({
   onChangeText,
   onOpenFilters,
   onSubmit,
+  onFocus,
+  onBlur,
 }: {
   value: string;
   onChangeText: (nextValue: string) => void;
   onOpenFilters: () => void;
   onSubmit: () => void;
+  onFocus?: TextInputProps["onFocus"];
+  onBlur?: TextInputProps["onBlur"];
 }) {
   return (
     <View
@@ -99,7 +145,9 @@ function SearchBar({
       <Feather color={theme.colors.muted} name="search" size={22} />
 
       <TextInput
+        onBlur={onBlur}
         onChangeText={onChangeText}
+        onFocus={onFocus}
         onSubmitEditing={onSubmit}
         placeholder="Bạn muốn tìm chỗ ở khu nào?"
         placeholderTextColor="#C2C7DA"
@@ -129,6 +177,68 @@ function SearchBar({
         <Feather color={theme.colors.muted} name="sliders" size={22} />
       </Pressable>
     </View>
+  );
+}
+
+function LiveSearchItem({
+  place,
+  onPress,
+  query,
+}: {
+  place: PlaceSummary;
+  onPress: () => void;
+  query: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        alignItems: "center",
+        borderRadius: 16,
+        borderCurve: "continuous",
+        flexDirection: "row",
+        gap: 12,
+        opacity: pressed ? 0.88 : 1,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+      })}
+    >
+      <SafeImage
+        fallbackSource={liveSearchFallbackImage}
+        source={getImageSource(place.cover_image, liveSearchFallbackImage)}
+        style={{
+          borderRadius: 12,
+          height: 62,
+          width: 62,
+        }}
+      />
+
+      <View style={{ flex: 1, gap: 5 }}>
+        <Text
+          selectable
+          numberOfLines={2}
+          style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "700", lineHeight: 19 }}
+        >
+          {renderHighlightedText(place.title, query)}
+        </Text>
+        <Text selectable numberOfLines={1} style={{ color: theme.colors.muted, fontSize: 12.5, fontWeight: "500" }}>
+          {renderHighlightedText(formatLocation(place), query)}
+        </Text>
+        <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
+          <View style={{ alignItems: "center", flexDirection: "row", gap: 4 }}>
+            <Feather color={theme.colors.sun} name="star" size={12} />
+            <Text selectable style={{ color: theme.colors.ink, fontSize: 12, fontWeight: "600" }}>
+              {formatRating(place.rating)}
+            </Text>
+          </View>
+          <Text selectable numberOfLines={1} style={{ color: theme.colors.sun, flex: 1, fontSize: 12.5, fontWeight: "700" }}>
+            {formatPriceText(place.price_text)}
+          </Text>
+        </View>
+      </View>
+
+      <Feather color={theme.colors.muted} name="arrow-up-right" size={16} />
+    </Pressable>
   );
 }
 
@@ -389,12 +499,79 @@ export default function HomeTabRoute() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const featuredCardWidth = Math.min(width * 0.62, 250);
+  const liveSearchCacheRef = useRef<
+    Map<string, { items: PlaceSummary[]; cachedAt: number }>
+  >(new Map());
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<PlaceSummary[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [featuredPlaces, setFeaturedPlaces] = useState<PlaceSummary[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const trimmedSearchQuery = searchQuery.trim();
+  const shouldShowLiveSearch = trimmedSearchQuery.length >= LIVE_SEARCH_MIN_QUERY_LENGTH;
+  const hasLiveSearchResults = searchResults.length > 0;
+  const showLiveSearchPanel =
+    isSearchFocused &&
+    ((shouldShowLiveSearch &&
+      (isSearching || hasLiveSearchResults || searchErrorMessage !== null)) ||
+      (!shouldShowLiveSearch && recentSearches.length > 0));
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadRecentSearches() {
+      try {
+        const rawValue = await AsyncStorage.getItem(RECENT_SEARCHES_STORAGE_KEY);
+        if (!isActive || !rawValue) {
+          return;
+        }
+
+        const parsed = JSON.parse(rawValue) as unknown;
+        if (!Array.isArray(parsed)) {
+          return;
+        }
+
+        const cleaned = parsed
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
+          .slice(0, RECENT_SEARCH_LIMIT);
+
+        setRecentSearches(cleaned);
+      } catch {
+        // ignore storage read failures
+      }
+    }
+
+    loadRecentSearches().catch(() => undefined);
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(
+      RECENT_SEARCHES_STORAGE_KEY,
+      JSON.stringify(recentSearches.slice(0, RECENT_SEARCH_LIMIT)),
+    ).catch(() => undefined);
+  }, [recentSearches]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, LIVE_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [searchQuery]);
 
   useEffect(() => {
     let isActive = true;
@@ -439,6 +616,68 @@ export default function HomeTabRoute() {
     };
   }, []);
 
+  useEffect(() => {
+    let isActive = true;
+
+    if (debouncedSearchQuery.length < LIVE_SEARCH_MIN_QUERY_LENGTH) {
+      setSearchResults([]);
+      setSearchErrorMessage(null);
+      setIsSearching(false);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    async function loadLiveSearchResults() {
+      const cachedEntry = liveSearchCacheRef.current.get(debouncedSearchQuery);
+      if (cachedEntry && Date.now() - cachedEntry.cachedAt < LIVE_SEARCH_CACHE_TTL_MS) {
+        setSearchResults(cachedEntry.items);
+        setSearchErrorMessage(null);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      setSearchErrorMessage(null);
+
+      try {
+        const payload = await fetchPlaces({
+          q: debouncedSearchQuery,
+          limit: LIVE_SEARCH_LIMIT,
+          sort: "rating_desc",
+        });
+
+        if (!isActive) {
+          return;
+        }
+
+        setSearchResults(payload.items);
+        liveSearchCacheRef.current.set(debouncedSearchQuery, {
+          items: payload.items,
+          cachedAt: Date.now(),
+        });
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        setSearchErrorMessage(
+          error instanceof Error ? error.message : "Không tải được gợi ý realtime.",
+        );
+      } finally {
+        if (isActive) {
+          setIsSearching(false);
+        }
+      }
+    }
+
+    loadLiveSearchResults().catch(() => undefined);
+
+    return () => {
+      isActive = false;
+    };
+  }, [debouncedSearchQuery]);
+
   function openResults(params: Record<string, string>) {
     router.push({
       pathname: "/results",
@@ -447,14 +686,31 @@ export default function HomeTabRoute() {
   }
 
   function submitSearch() {
-    const q = searchQuery.trim();
+    const q = trimmedSearchQuery;
+    if (q) {
+      setRecentSearches((current) => {
+        const next = [q, ...current.filter((item) => item !== q)];
+        return next.slice(0, RECENT_SEARCH_LIMIT);
+      });
+      setIsSearchFocused(false);
+    }
     openResults(q ? { q } : {});
+  }
+
+  function openPlace(placeId: string) {
+    setIsSearchFocused(false);
+    router.push({
+      pathname: "/place/[place-id]",
+      params: { "place-id": placeId },
+    });
   }
 
   return (
     <View style={{ backgroundColor: theme.colors.page, flex: 1 }}>
       <StatusBar style="dark" />
       <ScrollView
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => setIsSearchFocused(false)}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
           gap: 20,
@@ -472,16 +728,182 @@ export default function HomeTabRoute() {
           showNotificationDot
         />
 
-        <View style={{ gap: 10 }}>
+        <View style={{ zIndex: 20 }}>
           <Text selectable style={{ color: theme.colors.muted, fontSize: 13, fontWeight: "600", letterSpacing: 0.7 }}>
             TÌM KIẾM
           </Text>
-          <SearchBar
-            onChangeText={setSearchQuery}
-            onOpenFilters={submitSearch}
-            onSubmit={submitSearch}
-            value={searchQuery}
-          />
+          <View style={{ gap: 10, position: "relative" }}>
+            <SearchBar
+              onBlur={() => {
+                setTimeout(() => {
+                  setIsSearchFocused(false);
+                }, 120);
+              }}
+              onChangeText={setSearchQuery}
+              onFocus={() => setIsSearchFocused(true)}
+              onOpenFilters={submitSearch}
+              onSubmit={submitSearch}
+              value={searchQuery}
+            />
+
+            {showLiveSearchPanel ? (
+              <>
+                <Pressable
+                  onPress={() => setIsSearchFocused(false)}
+                  style={{
+                    bottom: -9999,
+                    left: -24,
+                    position: "absolute",
+                    right: -24,
+                    top: 0,
+                    zIndex: 9,
+                  }}
+                />
+                <View
+                  style={{
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.chipBorder,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    boxShadow: "0 18px 34px rgba(20, 27, 52, 0.10)",
+                    left: 0,
+                    overflow: "hidden",
+                    position: "absolute",
+                    right: 0,
+                    top: 72,
+                    zIndex: 10,
+                  }}
+                >
+                  {!shouldShowLiveSearch && recentSearches.length > 0 ? (
+                    <View style={{ paddingBottom: 10, paddingTop: 10 }}>
+                      <View
+                        style={{
+                          alignItems: "center",
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          paddingBottom: 8,
+                          paddingHorizontal: 14,
+                        }}
+                      >
+                        <Text selectable style={{ color: theme.colors.muted, fontSize: 11.5, fontWeight: "600" }}>
+                          Tìm gần đây
+                        </Text>
+                        <Pressable onPress={() => setRecentSearches([])}>
+                          <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "700" }}>
+                            Xóa
+                          </Text>
+                        </Pressable>
+                      </View>
+                      {recentSearches.map((item, index) => (
+                        <Pressable
+                          key={item}
+                          onPress={() => {
+                            setSearchQuery(item);
+                            setDebouncedSearchQuery(item);
+                            setIsSearchFocused(true);
+                          }}
+                          style={({ pressed }) => ({
+                            borderTopColor: index === 0 ? "transparent" : "rgba(140, 147, 168, 0.14)",
+                            borderTopWidth: 1,
+                            opacity: pressed ? 0.82 : 1,
+                            paddingHorizontal: 14,
+                            paddingVertical: 13,
+                          })}
+                        >
+                          <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
+                            <Feather color={theme.colors.muted} name="clock" size={14} />
+                            <Text selectable style={{ color: theme.colors.ink, flex: 1, fontSize: 13.5, fontWeight: "600" }}>
+                              {item}
+                            </Text>
+                            <Feather color={theme.colors.muted} name="arrow-up-left" size={14} />
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : searchErrorMessage && !hasLiveSearchResults ? (
+                    <View style={{ gap: 8, padding: 16 }}>
+                      <Text selectable style={{ color: theme.colors.coral, fontSize: 13.5, fontWeight: "700" }}>
+                        {searchErrorMessage}
+                      </Text>
+                      <Text selectable style={{ color: theme.colors.muted, fontSize: 12, lineHeight: 18 }}>
+                        API: {stayfinderApiBaseUrl}
+                      </Text>
+                    </View>
+                  ) : hasLiveSearchResults ? (
+                    <View style={{ paddingBottom: 6, paddingTop: 6 }}>
+                      <View
+                        style={{
+                          alignItems: "center",
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          paddingBottom: 6,
+                          paddingHorizontal: 14,
+                        }}
+                      >
+                        <Text selectable style={{ color: theme.colors.muted, fontSize: 11.5, fontWeight: "600" }}>
+                          {isSearching ? "Đang cập nhật..." : `${searchResults.length} gợi ý`}
+                        </Text>
+                        <Pressable
+                          onPress={() => {
+                            setIsSearchFocused(false);
+                            submitSearch();
+                          }}
+                        >
+                          <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "700" }}>
+                            Xem tất cả
+                          </Text>
+                        </Pressable>
+                      </View>
+                      {searchResults.map((place, index) => (
+                        <View
+                          key={place.id}
+                          style={{
+                            borderTopColor: index === 0 ? "transparent" : "rgba(140, 147, 168, 0.14)",
+                            borderTopWidth: 1,
+                          }}
+                        >
+                          <LiveSearchItem onPress={() => openPlace(place.place_id)} place={place} query={trimmedSearchQuery} />
+                        </View>
+                      ))}
+                      {isSearching ? (
+                        <View
+                          style={{
+                            alignItems: "center",
+                            flexDirection: "row",
+                            gap: 8,
+                            justifyContent: "center",
+                            paddingHorizontal: 14,
+                            paddingTop: 8,
+                          }}
+                        >
+                          <ActivityIndicator color={theme.colors.accent} size="small" />
+                          <Text selectable style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "500" }}>
+                            Làm mới gợi ý...
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8, padding: 16 }}>
+                      <Text selectable style={{ color: theme.colors.muted, fontSize: 13.5, lineHeight: 20 }}>
+                        Chưa có địa điểm nào khớp với từ khóa hiện tại.
+                      </Text>
+                      <Pressable
+                        onPress={() => {
+                          setIsSearchFocused(false);
+                          submitSearch();
+                        }}
+                      >
+                        <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "700" }}>
+                          Mở trang kết quả đầy đủ
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              </>
+            ) : null}
+          </View>
         </View>
 
         <Pressable
