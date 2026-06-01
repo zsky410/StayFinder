@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SafeImage, SafeImageBackground } from "@/components/safe-image";
 import { DetailLocationMap } from "@/components/detail-location-map";
 import { theme } from "@/constants/theme";
+import { useSavedPlaces } from "@/lib/saved-places";
 import {
   fetchPlaceDetail,
   fetchReviewSummary,
@@ -289,6 +290,7 @@ function PlaceDetailSkeleton({
 export default function PlaceDetailRoute() {
   const insets = useSafeAreaInsets();
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+  const { isSaved, toggleSavedFromDetail } = useSavedPlaces();
   const params = useLocalSearchParams<{ "place-id"?: string | string[] }>();
   const placeId = getPlaceId(params["place-id"]);
   const galleryScrollRef = useRef<ScrollView>(null);
@@ -415,6 +417,7 @@ export default function PlaceDetailRoute() {
     const heroImageUrl = galleryImages[0] || place?.cover_image || null;
     return getImageSource(heroImageUrl, detailHeroImage);
   }, [galleryImages, place]);
+  const placeSaved = place ? isSaved(place.place_id) : false;
   const reviewsToRender = useMemo(() => {
     if (!place) {
       return [];
@@ -1116,6 +1119,21 @@ export default function PlaceDetailRoute() {
           right: 0,
         }}
       >
+        <Pressable
+          onPress={() => toggleSavedFromDetail(place)}
+          style={({ pressed }) => ({
+            alignItems: "center",
+            backgroundColor: placeSaved ? theme.colors.accent : "#EDF3FF",
+            borderRadius: 14,
+            height: 52,
+            justifyContent: "center",
+            opacity: pressed ? 0.85 : 1,
+            width: 68,
+          })}
+        >
+          <Feather color={placeSaved ? "#FFFFFF" : theme.colors.accent} name="heart" size={20} />
+        </Pressable>
+
         <Pressable
           disabled={!place.phone}
           onPress={() => tryOpenUrl(place.phone ? `tel:${place.phone}` : null)}

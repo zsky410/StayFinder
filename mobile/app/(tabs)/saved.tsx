@@ -2,24 +2,25 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useMemo, useRef, useState } from "react";
-import { Animated, Image, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
+import { Animated, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/brand-header";
+import { SafeImage } from "@/components/safe-image";
 import { theme } from "@/constants/theme";
-import { savedPlacesDemo } from "@/data/demo-stays";
+import { useSavedPlaces, type SavedPlaceRecord } from "@/lib/saved-places";
+import { formatPriceText, formatRating, getImageSource } from "@/lib/stayfinder-ui";
 
 const DELETE_ACTION_WIDTH = 132;
 const CARD_HEIGHT = 142;
-
-type SavedPlace = (typeof savedPlacesDemo)[number];
+const savedFallbackImage = require("../../assets/results/detail-hero.jpg");
 
 function SwipeableSavedCard({
   item,
   onDelete,
 }: {
-  item: SavedPlace;
-  onDelete: (id: string) => void;
+  item: SavedPlaceRecord;
+  onDelete: (placeId: string) => void;
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const currentOffsetRef = useRef(0);
@@ -90,7 +91,7 @@ function SwipeableSavedCard({
         }}
       >
         <Pressable
-          onPress={() => onDelete(item.id)}
+          onPress={() => onDelete(item.place_id)}
           style={({ pressed }) => ({
             alignItems: "center",
             justifyContent: "center",
@@ -128,7 +129,7 @@ function SwipeableSavedCard({
             }
 
             router.push({
-              params: { "place-id": item.detailId },
+              params: { "place-id": item.place_id },
               pathname: "/place/[place-id]",
             });
           }}
@@ -144,8 +145,9 @@ function SwipeableSavedCard({
           })}
         >
           <View style={{ height: CARD_HEIGHT, position: "relative", width: 126 }}>
-            <Image
-              source={item.image}
+            <SafeImage
+              fallbackSource={savedFallbackImage}
+              source={getImageSource(item.cover_image, savedFallbackImage)}
               style={{
                 height: CARD_HEIGHT,
                 width: 126,
@@ -170,7 +172,7 @@ function SwipeableSavedCard({
               >
                 <Feather color={theme.colors.sun} name="star" size={14} />
                 <Text selectable style={{ color: theme.colors.ink, fontSize: 13, fontWeight: "600" }}>
-                  {item.rating}
+                  {formatRating(item.rating)}
                 </Text>
               </View>
             ) : null}
@@ -197,24 +199,10 @@ function SwipeableSavedCard({
               </Text>
             </View>
 
-            <View style={{ gap: item.oldPrice ? 4 : 0 }}>
-              {item.oldPrice ? (
-                <Text
-                  selectable
-                  style={{
-                    color: "#7D8498",
-                    fontSize: 14,
-                    fontWeight: "500",
-                    textDecorationLine: "line-through",
-                  }}
-                >
-                  {item.oldPrice}
-                </Text>
-              ) : null}
-
+            <View style={{ gap: 0 }}>
               <View style={{ alignItems: "flex-end", flexDirection: "row", gap: 4 }}>
                 <Text selectable style={{ color: theme.colors.sun, fontSize: 20, fontWeight: "700" }}>
-                  {item.price}
+                  {formatPriceText(item.price_text)}
                 </Text>
                 <Text selectable style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "500" }}>
                   /đêm
@@ -230,7 +218,7 @@ function SwipeableSavedCard({
 
 export default function SavedTabRoute() {
   const insets = useSafeAreaInsets();
-  const [savedItems, setSavedItems] = useState<SavedPlace[]>(() => [...savedPlacesDemo]);
+  const { savedPlaces, removeSaved } = useSavedPlaces();
 
   return (
     <View style={{ backgroundColor: theme.colors.page, flex: 1 }}>
@@ -250,7 +238,7 @@ export default function SavedTabRoute() {
 
         <View style={{ gap: 8, paddingTop: 18 }}>
           <Text selectable style={{ color: theme.colors.ink, fontSize: 31, fontWeight: "700", lineHeight: 38 }}>
-            {`Địa điểm đã lưu (${savedItems.length})`}
+            {`Địa điểm đã lưu (${savedPlaces.length})`}
           </Text>
           <Text selectable style={{ color: theme.colors.muted, fontSize: 16 }}>
             Quản lý những nơi bạn yêu thích
@@ -258,15 +246,36 @@ export default function SavedTabRoute() {
         </View>
 
         <View style={{ gap: 16 }}>
-          {savedItems.map((item) => (
-            <SwipeableSavedCard
-              key={item.id}
-              item={item}
-              onDelete={(id) => {
-                setSavedItems((currentItems) => currentItems.filter((currentItem) => currentItem.id !== id));
+          {savedPlaces.length ? (
+            savedPlaces.map((item) => (
+              <SwipeableSavedCard
+                key={item.place_id}
+                item={item}
+                onDelete={removeSaved}
+              />
+            ))
+          ) : (
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: "#FFFFFF",
+                borderColor: theme.colors.chipBorder,
+                borderRadius: 24,
+                borderWidth: 1,
+                gap: 10,
+                paddingHorizontal: 22,
+                paddingVertical: 28,
               }}
-            />
-          ))}
+            >
+              <MaterialCommunityIcons color={theme.colors.muted} name="heart-outline" size={34} />
+              <Text selectable style={{ color: theme.colors.ink, fontSize: 18, fontWeight: "700" }}>
+                Chưa có địa điểm nào được lưu
+              </Text>
+              <Text selectable style={{ color: theme.colors.muted, fontSize: 14, lineHeight: 22, textAlign: "center" }}>
+                Khi bạn bấm lưu ở danh sách hoặc trang chi tiết, địa điểm sẽ xuất hiện tại đây.
+              </Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>

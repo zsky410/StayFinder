@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandHeader } from "@/components/brand-header";
 import { SafeImage } from "@/components/safe-image";
 import { theme } from "@/constants/theme";
+import { useSavedPlaces } from "@/lib/saved-places";
 import {
   fetchFiltersMeta,
   fetchPlaces,
@@ -163,9 +164,13 @@ function AmenityRow({
 function ResultCard({
   item,
   fallbackImage,
+  isSaved,
+  onToggleSaved,
 }: {
   item: PlaceSummary;
   fallbackImage: typeof resultFallbackImages[number];
+  isSaved: boolean;
+  onToggleSaved: () => void;
 }) {
   const chips = derivePlaceTags(item).slice(0, 2);
 
@@ -225,9 +230,10 @@ function ResultCard({
           </View>
 
           <Pressable
+            onPress={onToggleSaved}
             style={{
               alignItems: "center",
-              backgroundColor: "rgba(255,255,255,0.92)",
+              backgroundColor: isSaved ? "rgba(36, 84, 234, 0.96)" : "rgba(255,255,255,0.92)",
               borderRadius: 999,
               bottom: 8,
               height: 30,
@@ -237,7 +243,7 @@ function ResultCard({
               width: 30,
             }}
           >
-            <Feather color={theme.colors.muted} name="heart" size={15} />
+            <Feather color={isSaved ? "#FFFFFF" : theme.colors.muted} name="heart" size={15} />
           </Pressable>
         </View>
 
@@ -344,6 +350,7 @@ function buildPlacesQuery(filters: ResultsFiltersState, page: number): PlacesQue
 
 export default function ResultsRoute() {
   const insets = useSafeAreaInsets();
+  const { isSaved, toggleSavedFromSummary } = useSavedPlaces();
   const params = useLocalSearchParams<{
     q?: string | string[];
     type?: string | string[];
@@ -815,6 +822,8 @@ export default function ResultsRoute() {
                         resultFallbackImages[(rowIndex * 2 + itemIndex) % resultFallbackImages.length]
                       }
                       item={item}
+                      isSaved={isSaved(item.place_id)}
+                      onToggleSaved={() => toggleSavedFromSummary(item)}
                     />
                   </View>
                 ))}

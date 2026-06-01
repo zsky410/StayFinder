@@ -1,5 +1,4 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
@@ -45,7 +44,6 @@ const LIVE_SEARCH_LIMIT = 5;
 const LIVE_SEARCH_DEBOUNCE_MS = 140;
 const LIVE_SEARCH_CACHE_TTL_MS = 45_000;
 const RECENT_SEARCH_LIMIT = 5;
-const RECENT_SEARCHES_STORAGE_KEY = "stayfinder:recent-searches";
 
 const quickFilters = [
   {
@@ -120,6 +118,8 @@ function SearchBar({
   onSubmit,
   onFocus,
   onBlur,
+  onClose,
+  showCloseButton,
 }: {
   value: string;
   onChangeText: (nextValue: string) => void;
@@ -127,6 +127,8 @@ function SearchBar({
   onSubmit: () => void;
   onFocus?: TextInputProps["onFocus"];
   onBlur?: TextInputProps["onBlur"];
+  onClose?: () => void;
+  showCloseButton?: boolean;
 }) {
   return (
     <View
@@ -165,7 +167,7 @@ function SearchBar({
       />
 
       <Pressable
-        onPress={onOpenFilters}
+        onPress={showCloseButton ? onClose : onOpenFilters}
         style={({ pressed }) => ({
           alignItems: "center",
           justifyContent: "center",
@@ -174,7 +176,7 @@ function SearchBar({
           paddingHorizontal: 18,
         })}
       >
-        <Feather color={theme.colors.muted} name="sliders" size={22} />
+        <Feather color={theme.colors.muted} name={showCloseButton ? "x" : "sliders"} size={22} />
       </Pressable>
     </View>
   );
@@ -508,7 +510,7 @@ export default function HomeTabRoute() {
   const [searchResults, setSearchResults] = useState<PlaceSummary[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [featuredPlaces, setFeaturedPlaces] = useState<PlaceSummary[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
@@ -518,50 +520,10 @@ export default function HomeTabRoute() {
   const shouldShowLiveSearch = trimmedSearchQuery.length >= LIVE_SEARCH_MIN_QUERY_LENGTH;
   const hasLiveSearchResults = searchResults.length > 0;
   const showLiveSearchPanel =
-    isSearchFocused &&
+    isSearchPanelOpen &&
     ((shouldShowLiveSearch &&
       (isSearching || hasLiveSearchResults || searchErrorMessage !== null)) ||
       (!shouldShowLiveSearch && recentSearches.length > 0));
-
-  useEffect(() => {
-    let isActive = true;
-
-    async function loadRecentSearches() {
-      try {
-        const rawValue = await AsyncStorage.getItem(RECENT_SEARCHES_STORAGE_KEY);
-        if (!isActive || !rawValue) {
-          return;
-        }
-
-        const parsed = JSON.parse(rawValue) as unknown;
-        if (!Array.isArray(parsed)) {
-          return;
-        }
-
-        const cleaned = parsed
-          .map((item) => String(item || "").trim())
-          .filter(Boolean)
-          .slice(0, RECENT_SEARCH_LIMIT);
-
-        setRecentSearches(cleaned);
-      } catch {
-        // ignore storage read failures
-      }
-    }
-
-    loadRecentSearches().catch(() => undefined);
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    AsyncStorage.setItem(
-      RECENT_SEARCHES_STORAGE_KEY,
-      JSON.stringify(recentSearches.slice(0, RECENT_SEARCH_LIMIT)),
-    ).catch(() => undefined);
-  }, [recentSearches]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -678,6 +640,29 @@ export default function HomeTabRoute() {
     };
   }, [debouncedSearchQuery]);
 
+  useEffect(() => {
+    if (!isSearchPanelOpen) {
+      return;
+    }
+
+    const currentQuery = searchQuery.trim();
+    if (currentQuery.length < LIVE_SEARCH_MIN_QUERY_LENGTH) {
+      return;
+    }
+
+    const cachedEntry = liveSearchCacheRef.current.get(currentQuery);
+    if (cachedEntry && Date.now() - cachedEntry.cachedAt < LIVE_SEARCH_CACHE_TTL_MS) {
+      setSearchResults(cachedEntry.items);
+      setSearchErrorMessage(null);
+      setIsSearching(false);
+      return;
+    }
+
+    if (debouncedSearchQuery !== currentQuery) {
+      setDebouncedSearchQuery(currentQuery);
+    }
+  }, [debouncedSearchQuery, isSearchPanelOpen, searchQuery]);
+
   function openResults(params: Record<string, string>) {
     router.push({
       pathname: "/results",
@@ -692,13 +677,13 @@ export default function HomeTabRoute() {
         const next = [q, ...current.filter((item) => item !== q)];
         return next.slice(0, RECENT_SEARCH_LIMIT);
       });
-      setIsSearchFocused(false);
+      setIsSearchPanelOpen(false);
     }
     openResults(q ? { q } : {});
   }
 
   function openPlace(placeId: string) {
-    setIsSearchFocused(false);
+    setIsSearchPanelOpen(false);
     router.push({
       pathname: "/place/[place-id]",
       params: { "place-id": placeId },
@@ -710,7 +695,6 @@ export default function HomeTabRoute() {
       <StatusBar style="dark" />
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        onScrollBeginDrag={() => setIsSearchFocused(false)}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
           gap: 20,
@@ -734,174 +718,162 @@ export default function HomeTabRoute() {
           </Text>
           <View style={{ gap: 10, position: "relative" }}>
             <SearchBar
-              onBlur={() => {
-                setTimeout(() => {
-                  setIsSearchFocused(false);
-                }, 120);
+              onBlur={undefined}
+              onChangeText={(nextValue) => {
+                setSearchQuery(nextValue);
+                setIsSearchPanelOpen(true);
               }}
-              onChangeText={setSearchQuery}
-              onFocus={() => setIsSearchFocused(true)}
+              onFocus={() => setIsSearchPanelOpen(true)}
+              onClose={() => setIsSearchPanelOpen(false)}
               onOpenFilters={submitSearch}
               onSubmit={submitSearch}
+              showCloseButton={showLiveSearchPanel}
               value={searchQuery}
             />
 
             {showLiveSearchPanel ? (
-              <>
-                <Pressable
-                  onPress={() => setIsSearchFocused(false)}
-                  style={{
-                    bottom: -9999,
-                    left: -24,
-                    position: "absolute",
-                    right: -24,
-                    top: 0,
-                    zIndex: 9,
-                  }}
-                />
-                <View
-                  style={{
-                    backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.chipBorder,
-                    borderRadius: 20,
-                    borderWidth: 1,
-                    boxShadow: "0 18px 34px rgba(20, 27, 52, 0.10)",
-                    left: 0,
-                    overflow: "hidden",
-                    position: "absolute",
-                    right: 0,
-                    top: 72,
-                    zIndex: 10,
-                  }}
-                >
-                  {!shouldShowLiveSearch && recentSearches.length > 0 ? (
-                    <View style={{ paddingBottom: 10, paddingTop: 10 }}>
-                      <View
-                        style={{
-                          alignItems: "center",
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          paddingBottom: 8,
-                          paddingHorizontal: 14,
-                        }}
-                      >
-                        <Text selectable style={{ color: theme.colors.muted, fontSize: 11.5, fontWeight: "600" }}>
-                          Tìm gần đây
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.chipBorder,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  boxShadow: "0 18px 34px rgba(20, 27, 52, 0.10)",
+                  left: 0,
+                  overflow: "hidden",
+                  position: "absolute",
+                  right: 0,
+                  top: 72,
+                  zIndex: 10,
+                }}
+              >
+                {!shouldShowLiveSearch && recentSearches.length > 0 ? (
+                  <View style={{ paddingBottom: 10, paddingTop: 10 }}>
+                    <View
+                      style={{
+                        alignItems: "center",
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        paddingBottom: 8,
+                        paddingHorizontal: 14,
+                      }}
+                    >
+                      <Text selectable style={{ color: theme.colors.muted, fontSize: 11.5, fontWeight: "600" }}>
+                        Tìm gần đây
+                      </Text>
+                      <Pressable onPress={() => setRecentSearches([])}>
+                        <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "700" }}>
+                          Xóa
                         </Text>
-                        <Pressable onPress={() => setRecentSearches([])}>
-                          <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "700" }}>
-                            Xóa
-                          </Text>
-                        </Pressable>
-                      </View>
-                      {recentSearches.map((item, index) => (
-                        <Pressable
-                          key={item}
-                          onPress={() => {
+                      </Pressable>
+                    </View>
+                    {recentSearches.map((item, index) => (
+                      <Pressable
+                        key={item}
+                        onPress={() => {
                             setSearchQuery(item);
                             setDebouncedSearchQuery(item);
-                            setIsSearchFocused(true);
-                          }}
-                          style={({ pressed }) => ({
-                            borderTopColor: index === 0 ? "transparent" : "rgba(140, 147, 168, 0.14)",
-                            borderTopWidth: 1,
-                            opacity: pressed ? 0.82 : 1,
-                            paddingHorizontal: 14,
-                            paddingVertical: 13,
-                          })}
-                        >
-                          <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
-                            <Feather color={theme.colors.muted} name="clock" size={14} />
-                            <Text selectable style={{ color: theme.colors.ink, flex: 1, fontSize: 13.5, fontWeight: "600" }}>
-                              {item}
-                            </Text>
-                            <Feather color={theme.colors.muted} name="arrow-up-left" size={14} />
-                          </View>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : searchErrorMessage && !hasLiveSearchResults ? (
-                    <View style={{ gap: 8, padding: 16 }}>
-                      <Text selectable style={{ color: theme.colors.coral, fontSize: 13.5, fontWeight: "700" }}>
-                        {searchErrorMessage}
-                      </Text>
-                      <Text selectable style={{ color: theme.colors.muted, fontSize: 12, lineHeight: 18 }}>
-                        API: {stayfinderApiBaseUrl}
-                      </Text>
-                    </View>
-                  ) : hasLiveSearchResults ? (
-                    <View style={{ paddingBottom: 6, paddingTop: 6 }}>
-                      <View
-                        style={{
-                          alignItems: "center",
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          paddingBottom: 6,
-                          paddingHorizontal: 14,
+                            setIsSearchPanelOpen(true);
                         }}
+                        style={({ pressed }) => ({
+                          borderTopColor: index === 0 ? "transparent" : "rgba(140, 147, 168, 0.14)",
+                          borderTopWidth: 1,
+                          opacity: pressed ? 0.82 : 1,
+                          paddingHorizontal: 14,
+                          paddingVertical: 13,
+                        })}
                       >
-                        <Text selectable style={{ color: theme.colors.muted, fontSize: 11.5, fontWeight: "600" }}>
-                          {isSearching ? "Đang cập nhật..." : `${searchResults.length} gợi ý`}
-                        </Text>
-                        <Pressable
-                          onPress={() => {
-                            setIsSearchFocused(false);
-                            submitSearch();
-                          }}
-                        >
-                          <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "700" }}>
-                            Xem tất cả
+                        <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
+                          <Feather color={theme.colors.muted} name="clock" size={14} />
+                          <Text selectable style={{ color: theme.colors.ink, flex: 1, fontSize: 13.5, fontWeight: "600" }}>
+                            {item}
                           </Text>
-                        </Pressable>
-                      </View>
-                      {searchResults.map((place, index) => (
-                        <View
-                          key={place.id}
-                          style={{
-                            borderTopColor: index === 0 ? "transparent" : "rgba(140, 147, 168, 0.14)",
-                            borderTopWidth: 1,
-                          }}
-                        >
-                          <LiveSearchItem onPress={() => openPlace(place.place_id)} place={place} query={trimmedSearchQuery} />
+                          <Feather color={theme.colors.muted} name="arrow-up-left" size={14} />
                         </View>
-                      ))}
-                      {isSearching ? (
-                        <View
-                          style={{
-                            alignItems: "center",
-                            flexDirection: "row",
-                            gap: 8,
-                            justifyContent: "center",
-                            paddingHorizontal: 14,
-                            paddingTop: 8,
-                          }}
-                        >
-                          <ActivityIndicator color={theme.colors.accent} size="small" />
-                          <Text selectable style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "500" }}>
-                            Làm mới gợi ý...
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8, padding: 16 }}>
-                      <Text selectable style={{ color: theme.colors.muted, fontSize: 13.5, lineHeight: 20 }}>
-                        Chưa có địa điểm nào khớp với từ khóa hiện tại.
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : searchErrorMessage && !hasLiveSearchResults ? (
+                  <View style={{ gap: 8, padding: 16 }}>
+                    <Text selectable style={{ color: theme.colors.coral, fontSize: 13.5, fontWeight: "700" }}>
+                      {searchErrorMessage}
+                    </Text>
+                    <Text selectable style={{ color: theme.colors.muted, fontSize: 12, lineHeight: 18 }}>
+                      API: {stayfinderApiBaseUrl}
+                    </Text>
+                  </View>
+                ) : hasLiveSearchResults ? (
+                  <View style={{ paddingBottom: 6, paddingTop: 6 }}>
+                    <View
+                      style={{
+                        alignItems: "center",
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        paddingBottom: 6,
+                        paddingHorizontal: 14,
+                      }}
+                    >
+                      <Text selectable style={{ color: theme.colors.muted, fontSize: 11.5, fontWeight: "600" }}>
+                        {isSearching ? "Đang cập nhật..." : `${searchResults.length} gợi ý`}
                       </Text>
                       <Pressable
                         onPress={() => {
-                          setIsSearchFocused(false);
+                          setIsSearchPanelOpen(false);
                           submitSearch();
                         }}
                       >
                         <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "700" }}>
-                          Mở trang kết quả đầy đủ
+                          Xem tất cả
                         </Text>
                       </Pressable>
                     </View>
-                  )}
-                </View>
-              </>
+                    {searchResults.map((place, index) => (
+                      <View
+                        key={place.id}
+                        style={{
+                          borderTopColor: index === 0 ? "transparent" : "rgba(140, 147, 168, 0.14)",
+                          borderTopWidth: 1,
+                        }}
+                      >
+                        <LiveSearchItem onPress={() => openPlace(place.place_id)} place={place} query={trimmedSearchQuery} />
+                      </View>
+                    ))}
+                    {isSearching ? (
+                      <View
+                        style={{
+                          alignItems: "center",
+                          flexDirection: "row",
+                          gap: 8,
+                          justifyContent: "center",
+                          paddingHorizontal: 14,
+                          paddingTop: 8,
+                        }}
+                      >
+                        <ActivityIndicator color={theme.colors.accent} size="small" />
+                        <Text selectable style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "500" }}>
+                          Làm mới gợi ý...
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View style={{ gap: 8, padding: 16 }}>
+                    <Text selectable style={{ color: theme.colors.muted, fontSize: 13.5, lineHeight: 20 }}>
+                      Chưa có địa điểm nào khớp với từ khóa hiện tại.
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                          setIsSearchPanelOpen(false);
+                        submitSearch();
+                      }}
+                    >
+                      <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "700" }}>
+                        Mở trang kết quả đầy đủ
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
             ) : null}
           </View>
         </View>
