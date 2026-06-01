@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SafeImage } from "@/components/safe-image";
 import { theme } from "@/constants/theme";
-import { fetchChatQuery, type PlaceSummary } from "@/lib/stayfinder";
+import { fetchChatQuery, stayfinderApiBaseUrl, type PlaceSummary } from "@/lib/stayfinder";
 import { formatPriceText, formatRating, getImageSource } from "@/lib/stayfinder-ui";
 
 const fallbackImage = require("../../assets/results/detail-hero.jpg");
@@ -105,7 +105,7 @@ export default function ChatTabRoute() {
           role: "assistant",
           text:
             error instanceof Error
-              ? `Mình chưa gọi được AI chat: ${error.message}`
+              ? `Mình chưa gọi được AI chat: ${error.message}\nAPI: ${stayfinderApiBaseUrl}`
               : "Mình chưa gọi được AI chat. Bạn thử lại sau nhé.",
         },
       ]);

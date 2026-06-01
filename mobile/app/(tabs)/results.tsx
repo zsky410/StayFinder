@@ -18,6 +18,7 @@ import { theme } from "@/constants/theme";
 import {
   fetchFiltersMeta,
   fetchPlaces,
+  stayfinderApiBaseUrl,
   type FiltersMeta,
   type PlacesQuery,
   type PlaceSummary,
@@ -761,6 +762,9 @@ export default function ResultsRoute() {
             </Text>
             <Text selectable style={{ color: theme.colors.ink, fontSize: 14, lineHeight: 22 }}>
               {errorMessage}
+            </Text>
+            <Text selectable style={{ color: theme.colors.muted, fontSize: 12, lineHeight: 18 }}>
+              API: {stayfinderApiBaseUrl}
             </Text>
             <Pressable
               onPress={applyFilters}

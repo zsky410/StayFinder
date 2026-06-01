@@ -25,17 +25,46 @@ function readPortFromRootEnv() {
   return null;
 }
 
+function readBaseUrlFromRootEnv() {
+  try {
+    const envPath = path.resolve(__dirname, "..", ".env");
+    if (!fs.existsSync(envPath)) {
+      return null;
+    }
+    const content = fs.readFileSync(envPath, "utf8");
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) {
+        continue;
+      }
+      const match = line.match(/^EXPO_PUBLIC_API_BASE_URL\s*=\s*(.+)$/);
+      if (match) {
+        const value = match[1].replace(/^["']|["']$/g, "").trim();
+        return value || null;
+      }
+    }
+  } catch {
+    // ignore - fall back to default
+  }
+  return null;
+}
+
 module.exports = ({ config }) => {
   const apiPort =
     String(process.env.EXPO_PUBLIC_API_PORT || "").trim() ||
     readPortFromRootEnv() ||
     "3000";
+  const apiBaseUrl =
+    String(process.env.EXPO_PUBLIC_API_BASE_URL || "").trim() ||
+    readBaseUrlFromRootEnv() ||
+    "";
 
   return {
     ...config,
     extra: {
       ...(config.extra || {}),
       apiPort,
+      apiBaseUrl,
     },
   };
 };

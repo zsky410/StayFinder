@@ -22,7 +22,8 @@
         "backgroundColor": "#F6F7FC"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.gbao1504.stayfindermobile"
     },
     "web": {
       "bundler": "metro",

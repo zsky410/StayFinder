@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandHeader } from "@/components/brand-header";
 import { SafeImage } from "@/components/safe-image";
 import { theme } from "@/constants/theme";
-import { fetchPlaces, type PlaceSummary } from "@/lib/stayfinder";
+import { fetchPlaces, stayfinderApiBaseUrl, type PlaceSummary } from "@/lib/stayfinder";
 import {
   buildDistanceLabel,
   formatLocation,
@@ -562,6 +562,9 @@ export default function HomeTabRoute() {
             </Text>
             <Text selectable style={{ color: theme.colors.ink, fontSize: 14, lineHeight: 22 }}>
               {errorMessage}
+            </Text>
+            <Text selectable style={{ color: theme.colors.muted, fontSize: 12, lineHeight: 18 }}>
+              API: {stayfinderApiBaseUrl}
             </Text>
             <Pressable
               onPress={() => {
