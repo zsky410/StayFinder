@@ -932,6 +932,9 @@ async function fetchMatchedLandmarksForPlaces(placeIds, landmarkSlugs) {
 
 function buildFallbackAnswer(queryResult, recommendedPlaces) {
   if (!recommendedPlaces.length) {
+    if (!hasStayRecommendationIntent(queryResult.query || "", queryResult.intent || {})) {
+      return "Chào bạn, mình là StayFinder AI. Bạn có thể hỏi mình tìm chỗ ở Đà Nẵng theo khu vực, tiện nghi, loại hình hoặc khoảng cách tới biển, sân bay, Cầu Rồng, chợ Hàn.";
+    }
     return "Mình chưa tìm được chỗ thật sự phù hợp với tiêu chí này. Bạn thử nới khoảng cách, giảm bớt tiện ích bắt buộc, hoặc đổi sang một mốc gần như Cầu Rồng, Mỹ Khê hay sân bay nhé.";
   }
 

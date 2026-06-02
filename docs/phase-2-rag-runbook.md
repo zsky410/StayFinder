@@ -6,7 +6,7 @@ Runbook này chuẩn hóa cách build chỉ mục RAG LangChain cho StayFinder s
 
 Phase 2 trong repo hiện tại gồm:
 
-- build `ai_place_chunks` từ DB đã import
+- build `ai_place_chunks` từ DB đã import, tách theo nhiều `chunk_kind`
 - split chunk bằng `RecursiveCharacterTextSplitter`
 - embed bằng `text-embedding-3-small` (`1536` dimensions)
 - query prototype với:
@@ -101,7 +101,33 @@ Re-embed toàn bộ:
   --refresh
 ```
 
-## 5. Query prototype
+## 5. Validate index
+
+Chạy validation JSON trực tiếp từ pipeline:
+
+```bash
+.venv/bin/python scripts/phase2_rag.py validate \
+  --batch-key danang_accommodations_batch_20260323_082743
+```
+
+Kỳ vọng production cho batch v1:
+
+- `healthy: true`
+- `places_without_chunks: 0`
+- `chunks_missing_embeddings: 0`
+- `chunks_with_stale_hash: 0`
+- có `idx_ai_place_chunks_embedding_cosine`
+- `chunk_kinds` có nhiều nhóm, tối thiểu gồm `place_profile`; dữ liệu đầy đủ thường có thêm `amenity_profile`, `landmark_proximity`, `review_snippets`, `local_context`
+
+Nếu chỉ muốn audit mà không fail job/CI:
+
+```bash
+.venv/bin/python scripts/phase2_rag.py validate \
+  --batch-key danang_accommodations_batch_20260323_082743 \
+  --allow-unhealthy
+```
+
+## 6. Query prototype
 
 ### JSON output
 
@@ -127,7 +153,7 @@ Ghi chú:
 - Nếu chat provider là local OpenAI-compatible API, script sẽ dùng `RAG_CHAT_BASE_URL` + `RAG_CHAT_API_KEY`.
 - Nếu endpoint chat của bạn **không có** `/embeddings`, bạn vẫn cần một provider embeddings riêng cho bước `embed`.
 
-## 6. AI review summary
+## 7. AI review summary
 
 ### Heuristic fallback
 
@@ -150,7 +176,7 @@ Ghi chú:
 - Cờ chính là `--use-llm`; `--use-claude` vẫn được giữ lại để tương thích lệnh cũ.
 - Khi bật cờ này, script sẽ dùng chat provider đang cấu hình (`openai_compatible` hoặc `anthropic`) thay vì heuristic fallback.
 
-## 7. Validation
+## 8. SQL validation
 
 Chạy:
 
@@ -167,7 +193,24 @@ Kỳ vọng sau khi build + embed:
 - `places_with_chunks` gần bằng `1646`
 - `ai_review_summaries` tăng dần khi generate summary
 
-## 8. Không thuộc Phase 2
+## 9. Rebuild chuẩn sau khi đổi chunk logic
+
+Khi code chunking thay đổi, cần rebuild theo thứ tự:
+
+```bash
+.venv/bin/python scripts/phase2_rag.py chunk \
+  --batch-key danang_accommodations_batch_20260323_082743
+
+.venv/bin/python scripts/phase2_rag.py embed \
+  --batch-key danang_accommodations_batch_20260323_082743
+
+.venv/bin/python scripts/phase2_rag.py validate \
+  --batch-key danang_accommodations_batch_20260323_082743
+```
+
+`chunk` sẽ xóa và ghi lại chunks của place được chọn, nên embedding cũ của các place đó không còn. Luôn chạy `embed` sau khi rebuild chunk.
+
+## 10. Không thuộc Phase 2
 
 - mobile UI
 - backend Express API

@@ -473,18 +473,53 @@ def select_context_for_place(
     return selected[:4]
 
 
-def build_place_profile_text(
+def build_base_chunk_metadata(
     place: dict[str, Any],
-    notes_bundle: dict[str, dict[str, list[dict[str, Any]]]],
-) -> tuple[str, dict[str, Any]]:
+    *,
+    chunk_kind: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     title = place.get("title") or "Unknown place"
-    type_label = place.get("type_label") or place.get("type_slug") or "stay"
     rating = as_float(place.get("rating"))
     reviews_count = as_int(place.get("reviews_count"))
     amenities = place.get("amenities") or []
     landmarks = place.get("landmarks") or []
-    snippets = select_review_snippets(place.get("reviews") or [])
-    context_notes = select_context_for_place(place, notes_bundle)
+    tags = derive_tags(place)
+
+    metadata = {
+        "place_uuid": str(place["id"]),
+        "place_id": place["place_id"],
+        "batch_key": place.get("batch_key"),
+        "title": title,
+        "type_slug": place.get("type_slug"),
+        "district": place.get("district"),
+        "neighborhood": place.get("neighborhood"),
+        "city": place.get("city"),
+        "rating": rating,
+        "reviews_count": reviews_count,
+        "amenity_labels": amenities[:24],
+        "nearest_landmarks": [
+            {
+                "slug": entry["slug"],
+                "name": entry["name"],
+                "distance_m": entry["distance_m"],
+            }
+            for entry in landmarks[:8]
+        ],
+        "derived_tags": tags,
+        "chunk_kind": chunk_kind,
+        "source": "phase2-rag",
+    }
+    if extra:
+        metadata.update(extra)
+    return metadata
+
+
+def build_place_profile_text(place: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    title = place.get("title") or "Unknown place"
+    type_label = place.get("type_label") or place.get("type_slug") or "stay"
+    rating = as_float(place.get("rating"))
+    reviews_count = as_int(place.get("reviews_count"))
     tags = derive_tags(place)
 
     lines: list[str] = [
@@ -515,52 +550,132 @@ def build_place_profile_text(
     lines.append(f"Website available: {'yes' if place.get('website') else 'no'}")
     if tags:
         lines.append(f"Derived stay tags: {', '.join(tags)}")
+
+    return "\n".join(line for line in lines if line.strip()), build_base_chunk_metadata(
+        place,
+        chunk_kind="place_profile",
+    )
+
+
+def build_amenity_text(place: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    amenities = place.get("amenities") or []
+    tags = derive_tags(place)
+    if not amenities and not tags:
+        return None
+
+    title = place.get("title") or "Unknown place"
+    lines = [f"Place amenities and suitability signals for {title}."]
     if amenities:
-        lines.append("Amenities: " + ", ".join(amenities[:16]))
+        lines.append("Amenities: " + ", ".join(amenities[:32]))
+    if tags:
+        lines.append("Derived stay tags: " + ", ".join(tags))
 
-    if landmarks:
-        nearest_bits = [
-            f"{entry['name']} ({format_distance_m(entry['distance_m'])}, bird-flight)"
-            for entry in landmarks[:5]
-        ]
-        lines.append("Nearest landmarks: " + "; ".join(nearest_bits))
+    return "\n".join(lines), build_base_chunk_metadata(
+        place,
+        chunk_kind="amenity_profile",
+        extra={"amenity_count": len(amenities)},
+    )
 
+
+def build_landmark_text(place: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    landmarks = place.get("landmarks") or []
+    if not landmarks:
+        return None
+
+    title = place.get("title") or "Unknown place"
+    lines = [
+        f"Nearby landmarks for {title}.",
+        "Distances are bird-flight haversine distances unless OSRM route metrics are shown elsewhere.",
+    ]
+    for entry in landmarks[:8]:
+        anchor_label = entry.get("anchor_label")
+        suffix = f", anchor {anchor_label}" if anchor_label else ""
+        lines.append(f"- {entry['name']} ({format_distance_m(entry['distance_m'])}{suffix})")
+
+    return "\n".join(lines), build_base_chunk_metadata(
+        place,
+        chunk_kind="landmark_proximity",
+        extra={"landmark_count": len(landmarks)},
+    )
+
+
+def build_review_text(place: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    reviews = place.get("reviews") or []
+    snippets: list[str] = []
+    for review in reviews:
+        text = str(review.get("review_text") or review.get("text_translated") or "").strip()
+        if not text:
+            continue
+        text = re.sub(r"\s+", " ", text)
+        prefix_bits = []
+        if review.get("stars") is not None:
+            prefix_bits.append(f"{review['stars']} stars")
+        if review.get("likes_count") is not None:
+            prefix_bits.append(f"{review['likes_count']} likes")
+        prefix = f" ({', '.join(prefix_bits)})" if prefix_bits else ""
+        snippets.append(f"- Review{prefix}: {text[:420].strip()}")
+        if len(snippets) >= 10:
+            break
+    snippets = unique_preserve(snippets)
+    if not snippets:
+        return None
+
+    title = place.get("title") or "Unknown place"
+    lines = [f"Guest review evidence for {title}.", *snippets]
+    return "\n".join(lines), build_base_chunk_metadata(
+        place,
+        chunk_kind="review_snippets",
+        extra={
+            "review_snippet_count": len(snippets),
+            "source_review_count": as_int(place.get("reviews_count")) or len(reviews),
+        },
+    )
+
+
+def build_local_context_text(
+    place: dict[str, Any],
+    notes_bundle: dict[str, dict[str, list[dict[str, Any]]]],
+) -> tuple[str, dict[str, Any]] | None:
+    context_notes = select_context_for_place(place, notes_bundle)
+    if not context_notes:
+        return None
+
+    title = place.get("title") or "Unknown place"
+    lines = [f"Local context relevant to {title}."]
     if context_notes:
-        lines.append("Local context:")
         for note in context_notes:
             lines.append(f"- {note['title']}: {note['content']}")
 
-    if snippets:
-        lines.append("Review snippets:")
-        for snippet in snippets[:4]:
-            lines.append(f"- {snippet}")
+    return "\n".join(lines), build_base_chunk_metadata(
+        place,
+        chunk_kind="local_context",
+        extra={"context_note_slugs": [note["slug"] for note in context_notes]},
+    )
 
-    metadata = {
-        "place_uuid": str(place["id"]),
-        "place_id": place["place_id"],
-        "batch_key": place.get("batch_key"),
-        "title": title,
-        "type_slug": place.get("type_slug"),
-        "district": place.get("district"),
-        "neighborhood": place.get("neighborhood"),
-        "city": place.get("city"),
-        "rating": rating,
-        "reviews_count": reviews_count,
-        "amenity_labels": amenities[:16],
-        "nearest_landmarks": [
-            {
-                "slug": entry["slug"],
-                "name": entry["name"],
-                "distance_m": entry["distance_m"],
-            }
-            for entry in landmarks[:5]
-        ],
-        "context_note_slugs": [note["slug"] for note in context_notes],
-        "derived_tags": tags,
-        "chunk_kind": "place_profile",
-        "source": "phase2-rag",
-    }
-    return "\n".join(line for line in lines if line.strip()), metadata
+
+def build_raw_documents_for_place(
+    place: dict[str, Any],
+    notes_bundle: dict[str, dict[str, list[dict[str, Any]]]],
+) -> list[Document]:
+    sections = [
+        build_place_profile_text(place),
+        build_amenity_text(place),
+        build_landmark_text(place),
+        build_review_text(place),
+        build_local_context_text(place, notes_bundle),
+    ]
+    docs: list[Document] = []
+    for section_index, item in enumerate(sections):
+        if not item:
+            continue
+        content, metadata = item
+        content = content.strip()
+        if not content:
+            continue
+        metadata = dict(metadata)
+        metadata["section_index"] = section_index
+        docs.append(Document(page_content=content, metadata=metadata))
+    return docs
 
 
 def build_documents_for_place(
@@ -568,9 +683,16 @@ def build_documents_for_place(
     notes_bundle: dict[str, dict[str, list[dict[str, Any]]]],
     splitter: RecursiveCharacterTextSplitter,
 ) -> list[Document]:
-    content, metadata = build_place_profile_text(place, notes_bundle)
-    base_doc = Document(page_content=content, metadata=metadata)
-    return splitter.split_documents([base_doc])
+    raw_docs = build_raw_documents_for_place(place, notes_bundle)
+    split_docs: list[Document] = []
+    for raw_doc in raw_docs:
+        section_splits = splitter.split_documents([raw_doc])
+        for section_chunk_index, doc in enumerate(section_splits):
+            metadata = dict(doc.metadata)
+            metadata["section_chunk_index"] = section_chunk_index
+            doc.metadata = metadata
+            split_docs.append(doc)
+    return split_docs
 
 
 def cmd_chunk(args: argparse.Namespace) -> int:
@@ -595,42 +717,45 @@ def cmd_chunk(args: argparse.Namespace) -> int:
     notes_bundle = load_context_notes(conn)
     total_chunks = 0
     sample_chunks: list[dict[str, Any]] = []
+    all_chunk_rows: list[tuple[Any, ...]] = []
 
-    with conn:
-        with conn.cursor() as cur:
-            for place in places:
-                docs = build_documents_for_place(place, notes_bundle, splitter)
-                chunk_rows: list[tuple[Any, ...]] = []
-                for idx, doc in enumerate(docs):
-                    content = doc.page_content.strip()
-                    if not content:
-                        continue
-                    metadata = dict(doc.metadata)
-                    metadata["chunk_index"] = idx
-                    metadata["chunk_chars"] = len(content)
-                    chunk_rows.append(
-                        (
-                            place["id"],
-                            idx,
-                            content,
-                            chunk_md5(content),
-                            Json(metadata),
-                        )
-                    )
-                    if len(sample_chunks) < args.sample_count:
-                        sample_chunks.append(
-                            {
-                                "place_id": place["place_id"],
-                                "title": place.get("title"),
-                                "chunk_index": idx,
-                                "preview": content[:260],
-                            }
-                        )
-                total_chunks += len(chunk_rows)
-                if args.dry_run:
-                    continue
-                cur.execute("DELETE FROM ai_place_chunks WHERE place_id = %s", (place["id"],))
-                if chunk_rows:
+    for place in places:
+        docs = build_documents_for_place(place, notes_bundle, splitter)
+        for idx, doc in enumerate(docs):
+            content = doc.page_content.strip()
+            if not content:
+                continue
+            metadata = dict(doc.metadata)
+            metadata["chunk_index"] = idx
+            metadata["chunk_chars"] = len(content)
+            all_chunk_rows.append(
+                (
+                    place["id"],
+                    idx,
+                    content,
+                    chunk_md5(content),
+                    Json(metadata),
+                )
+            )
+            if len(sample_chunks) < args.sample_count:
+                sample_chunks.append(
+                    {
+                        "place_id": place["place_id"],
+                        "title": place.get("title"),
+                        "chunk_index": idx,
+                        "chunk_kind": metadata.get("chunk_kind"),
+                        "preview": content[:260],
+                    }
+                )
+
+    total_chunks = len(all_chunk_rows)
+
+    if not args.dry_run:
+        place_uuids = [place["id"] for place in places]
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM ai_place_chunks WHERE place_id = ANY(%s::uuid[])", (place_uuids,))
+                if all_chunk_rows:
                     execute_batch(
                         cur,
                         """
@@ -642,7 +767,8 @@ def cmd_chunk(args: argparse.Namespace) -> int:
                             metadata
                         ) VALUES (%s, %s, %s, %s, %s)
                         """,
-                        chunk_rows,
+                        all_chunk_rows,
+                        page_size=500,
                     )
 
     result = {
@@ -797,6 +923,136 @@ def cmd_embed(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def build_validation_where(batch_key: str | None) -> tuple[str, list[Any]]:
+    if not batch_key:
+        return "1=1", []
+    return "b.batch_key = %s", [batch_key]
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    load_project_env()
+    conn = connect_from_env()
+    batch_key = None if args.all_batches else args.batch_key
+    where_sql, params = build_validation_where(batch_key)
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(*)::bigint AS chunks_total,
+                COUNT(*) FILTER (WHERE c.embedding IS NOT NULL)::bigint AS chunks_with_embeddings,
+                COUNT(*) FILTER (WHERE c.embedding IS NULL)::bigint AS chunks_missing_embeddings,
+                COUNT(*) FILTER (
+                    WHERE c.content_md5 IS DISTINCT FROM md5(c.content)
+                )::bigint AS chunks_with_stale_hash,
+                COUNT(DISTINCT c.place_id)::bigint AS places_with_chunks
+            FROM ai_place_chunks c
+            JOIN places p ON p.id = c.place_id
+            LEFT JOIN crawl_batches b ON b.id = p.batch_id
+            WHERE {where_sql}
+            """,
+            params,
+        )
+        chunk_stats = dict(cur.fetchone() or {})
+
+        cur.execute(
+            f"""
+            SELECT COUNT(*)::bigint AS places_total
+            FROM places p
+            LEFT JOIN crawl_batches b ON b.id = p.batch_id
+            WHERE {where_sql}
+            """,
+            params,
+        )
+        place_stats = dict(cur.fetchone() or {})
+
+        cur.execute(
+            f"""
+            SELECT
+                COALESCE(c.metadata->>'chunk_kind', 'unknown') AS chunk_kind,
+                COUNT(*)::bigint AS row_count,
+                COUNT(*) FILTER (WHERE c.embedding IS NOT NULL)::bigint AS embedded_count
+            FROM ai_place_chunks c
+            JOIN places p ON p.id = c.place_id
+            LEFT JOIN crawl_batches b ON b.id = p.batch_id
+            WHERE {where_sql}
+            GROUP BY COALESCE(c.metadata->>'chunk_kind', 'unknown')
+            ORDER BY row_count DESC, chunk_kind ASC
+            """,
+            params,
+        )
+        chunk_kinds = [dict(row) for row in cur.fetchall()]
+
+        cur.execute(
+            f"""
+            SELECT
+                p.place_id,
+                p.title
+            FROM places p
+            LEFT JOIN crawl_batches b ON b.id = p.batch_id
+            LEFT JOIN ai_place_chunks c ON c.place_id = p.id
+            WHERE {where_sql}
+            GROUP BY p.id, p.place_id, p.title
+            HAVING COUNT(c.id) = 0
+            ORDER BY p.title ASC NULLS LAST
+            LIMIT %s
+            """,
+            [*params, args.sample_limit],
+        )
+        places_without_chunks = [dict(row) for row in cur.fetchall()]
+
+        cur.execute(
+            """
+            SELECT
+                to_regclass('public.idx_ai_place_chunks_embedding_cosine')::text AS vector_index,
+                to_regclass('public.idx_ai_place_chunks_metadata_gin')::text AS metadata_index
+            """
+        )
+        index_stats = dict(cur.fetchone() or {})
+
+        cur.execute(
+            f"""
+            SELECT COUNT(*)::bigint AS review_summaries
+            FROM ai_review_summaries ars
+            JOIN places p ON p.id = ars.place_id
+            LEFT JOIN crawl_batches b ON b.id = p.batch_id
+            WHERE {where_sql}
+            """,
+            params,
+        )
+        summary_stats = dict(cur.fetchone() or {})
+
+    places_total = int(place_stats.get("places_total") or 0)
+    places_with_chunks = int(chunk_stats.get("places_with_chunks") or 0)
+    chunks_total = int(chunk_stats.get("chunks_total") or 0)
+    missing_embeddings = int(chunk_stats.get("chunks_missing_embeddings") or 0)
+    stale_hashes = int(chunk_stats.get("chunks_with_stale_hash") or 0)
+    missing_places_count = max(places_total - places_with_chunks, 0)
+    healthy = (
+        places_total > 0
+        and chunks_total > 0
+        and missing_embeddings == 0
+        and stale_hashes == 0
+        and missing_places_count == 0
+        and bool(index_stats.get("vector_index"))
+    )
+
+    payload = {
+        "batch_key": batch_key,
+        "healthy": healthy,
+        "places_total": places_total,
+        "places_with_chunks": places_with_chunks,
+        "places_without_chunks": missing_places_count,
+        **chunk_stats,
+        **summary_stats,
+        "chunk_kinds": chunk_kinds,
+        "indexes": index_stats,
+        "sample_places_without_chunks": places_without_chunks,
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+    return 0 if healthy or args.allow_unhealthy else 1
 
 
 def build_landmark_alias_map(landmarks: list[dict[str, Any]]) -> dict[str, str]:
@@ -1035,6 +1291,7 @@ def fetch_semantic_matches(
             c.chunk_index,
             c.content,
             c.metadata,
+            c.metadata->>'chunk_kind' AS chunk_kind,
             p.place_id AS google_place_id,
             p.title,
             p.type_slug,
@@ -1166,8 +1423,12 @@ def maybe_generate_answer(
         ),
         ("human", f"{context_text}\n\nPlease answer the user query: {query}"),
     ]
-    response = model.invoke(prompt)
-    return response_text(response)
+    try:
+        response = model.invoke(prompt)
+        return response_text(response)
+    except Exception as exc:
+        print(f"[rag] chat generation failed: {exc}", file=sys.stderr)
+        return None
 
 
 def cmd_query(args: argparse.Namespace) -> int:
@@ -1473,6 +1734,17 @@ def build_parser() -> argparse.ArgumentParser:
     embed.add_argument("--model", default=DEFAULT_EMBED_MODEL)
     embed.add_argument("--refresh", action="store_true", help="Re-embed chunks even if embedding already exists")
     embed.set_defaults(func=cmd_embed)
+
+    validate = subparsers.add_parser("validate", help="Validate RAG chunk and embedding coverage")
+    validate.add_argument("--batch-key", default=DEFAULT_BATCH_KEY)
+    validate.add_argument("--all-batches", action="store_true", help="Validate all places instead of one batch")
+    validate.add_argument("--sample-limit", type=int, default=10)
+    validate.add_argument(
+        "--allow-unhealthy",
+        action="store_true",
+        help="Always return exit code 0 after printing validation JSON",
+    )
+    validate.set_defaults(func=cmd_validate)
 
     query = subparsers.add_parser("query", help="Run structured + semantic retrieval prototype")
     query.add_argument("query", help="Natural-language stay query")
