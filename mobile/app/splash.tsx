@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Image, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Stack, useRouter } from "expo-router";
@@ -10,10 +10,17 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { useAuth } from "@/lib/auth";
+
+import AuthRoute from "./auth";
+
 const splashLogo = require("../assets/branding/splash-logo.png");
 
 export default function SplashRoute() {
   const router = useRouter();
+  const { isAuthenticated, isInitializing } = useAuth();
+  const [isSplashFinished, setIsSplashFinished] = useState(false);
+  const [shouldShowAuth, setShouldShowAuth] = useState(false);
   const logoScale = useSharedValue(0.98);
 
   useEffect(() => {
@@ -22,17 +29,36 @@ export default function SplashRoute() {
       -1,
       true
     );
+  }, [logoScale]);
 
+  useEffect(() => {
     const timeout = setTimeout(() => {
-      router.replace("/home");
+      setIsSplashFinished(true);
     }, 1700);
 
     return () => clearTimeout(timeout);
-  }, [logoScale, router]);
+  }, []);
+
+  useEffect(() => {
+    if (!isSplashFinished || isInitializing) {
+      return;
+    }
+
+    if (isAuthenticated) {
+      router.replace("/(tabs)/home");
+      return;
+    }
+
+    setShouldShowAuth(true);
+  }, [isAuthenticated, isInitializing, isSplashFinished, router]);
 
   const logoAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: logoScale.value }],
   }));
+
+  if (shouldShowAuth) {
+    return <AuthRoute />;
+  }
 
   return (
     <View style={{ backgroundColor: "#FFFFFF", flex: 1 }}>

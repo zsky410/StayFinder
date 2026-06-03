@@ -165,6 +165,23 @@ export type PlacesQuery = {
   limit?: number;
 };
 
+export type AuthUser = {
+  id: string;
+  email: string;
+  display_name: string;
+  created_at: string;
+};
+
+export type AuthSession = {
+  token: string;
+  expires_at: string;
+};
+
+export type AuthResponse = {
+  user: AuthUser;
+  session: AuthSession;
+};
+
 type ExpoConstantsWithHost = typeof Constants & {
   expoConfig?: {
     hostUri?: string | null;
@@ -413,6 +430,39 @@ export function fetchPlaceDetail(placeId: string) {
 
 export function fetchFiltersMeta() {
   return fetchJson<FiltersMeta>("/filters/meta");
+}
+
+export function signupWithEmail(payload: {
+  email: string;
+  password: string;
+  displayName?: string;
+}) {
+  return fetchJson<AuthResponse>("/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function loginWithEmail(payload: { email: string; password: string }) {
+  return fetchJson<AuthResponse>("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchCurrentUser(token: string) {
+  return fetchJson<{ user: AuthUser }>("/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function logoutSession(token: string) {
+  return fetchJson<{ ok: boolean }>("/auth/logout", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 const REVIEW_SUMMARY_TIMEOUT_MS = 45_000;

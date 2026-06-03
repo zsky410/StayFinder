@@ -21,7 +21,7 @@ export default function NotFoundScreen() {
           Route này chưa tồn tại trong demo Phase 4.
         </Text>
 
-        <Link href="/home" asChild>
+        <Link href="/splash" asChild>
           <Pressable
             style={({ pressed }) => ({
               borderRadius: 18,
@@ -31,7 +31,7 @@ export default function NotFoundScreen() {
               paddingVertical: 14,
             })}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>Quay về Home</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>Về đăng nhập</Text>
           </Pressable>
         </Link>
       </View>

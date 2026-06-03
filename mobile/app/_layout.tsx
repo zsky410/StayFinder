@@ -8,6 +8,7 @@ export {
 } from "expo-router";
 
 import { navigationTheme } from "@/constants/theme";
+import { AuthProvider } from "@/lib/auth";
 import { SavedPlacesProvider } from "@/lib/saved-places";
 import { theme } from "@/constants/theme";
 
@@ -22,30 +23,33 @@ export default function RootLayout() {
 function RootLayoutNav() {
   return (
     <ThemeProvider value={navigationTheme}>
-      <SavedPlacesProvider>
-        <Stack
-          screenOptions={{
-            contentStyle: {
-              backgroundColor: theme.colors.page,
-            },
-            headerStyle: {
-              backgroundColor: theme.colors.page,
-            },
-            headerShadowVisible: false,
-            headerTintColor: theme.colors.ink,
-            headerTitleStyle: {
-              fontWeight: "600",
-            },
-          }}
-        >
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="splash" options={{ headerShown: false, gestureEnabled: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="filter-sheet" options={{ presentation: "modal" }} />
-          <Stack.Screen name="place/[place-id]" options={{ headerShown: false }} />
-          <Stack.Screen name="ai-review/[place-id]" options={{ title: "AI Review Summary" }} />
-        </Stack>
-      </SavedPlacesProvider>
+      <AuthProvider>
+        <SavedPlacesProvider>
+          <Stack
+            screenOptions={{
+              contentStyle: {
+                backgroundColor: theme.colors.page,
+              },
+              headerStyle: {
+                backgroundColor: theme.colors.page,
+              },
+              headerShadowVisible: false,
+              headerTintColor: theme.colors.ink,
+              headerTitleStyle: {
+                fontWeight: "600",
+              },
+            }}
+          >
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="splash" options={{ headerShown: false, gestureEnabled: false }} />
+            <Stack.Screen name="auth" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="filter-sheet" options={{ presentation: "modal" }} />
+            <Stack.Screen name="place/[place-id]" options={{ headerShown: false }} />
+            <Stack.Screen name="ai-review/[place-id]" options={{ title: "AI Review Summary" }} />
+          </Stack>
+        </SavedPlacesProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
