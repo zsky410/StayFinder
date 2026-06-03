@@ -89,9 +89,18 @@ AMENITY_ALIASES: dict[str, list[str]] = {
 }
 
 ZONE_BY_LANDMARK: dict[str, str] = {
-    "an-thuong": "an-thuong-zone",
-    "my-khe-beach": "my-khe-strip",
+    "son-tra-peninsula": "son-tra-south",
+    "east-sea-park": "my-khe-strip",
     "da-nang-airport": "airport-corridor",
+}
+
+DISTRICT_ALIASES: dict[str, str] = {
+    "ngu hanh son": "Ngũ Hành Sơn",
+    "son tra": "Sơn Trà",
+    "hai chau": "Hải Châu",
+    "thanh khe": "Thanh Khê",
+    "cam le": "Cẩm Lệ",
+    "lien chieu": "Liên Chiểu",
 }
 
 
@@ -100,6 +109,7 @@ class StructuredIntent:
     raw_query: str
     normalized_query: str
     type_slugs: list[str] = field(default_factory=list)
+    district_names: list[str] = field(default_factory=list)
     landmark_slugs: list[str] = field(default_factory=list)
     zone_slugs: list[str] = field(default_factory=list)
     amenity_labels: list[str] = field(default_factory=list)
@@ -111,6 +121,7 @@ class StructuredIntent:
     def has_filters(self) -> bool:
         return bool(
             self.type_slugs
+            or self.district_names
             or self.landmark_slugs
             or self.zone_slugs
             or self.amenity_labels
@@ -173,6 +184,39 @@ def format_distance_m(value: Any) -> str:
     if distance >= 1000:
         return f"{distance / 1000:.1f} km"
     return f"{distance} m"
+
+
+LANDMARK_DISPLAY_REPLACEMENTS: list[tuple[str, str]] = [
+    ("Dragon Bridge (Cầu Rồng)", "Cầu Rồng"),
+    ("Dragon Bridge", "Cầu Rồng"),
+    ("Han River Bridge (Cầu Sông Hàn)", "Cầu Sông Hàn"),
+    ("Han River Bridge", "Cầu Sông Hàn"),
+    ("Han Bridge", "Cầu Sông Hàn"),
+    ("Han Market (Chợ Hàn)", "Chợ Hàn"),
+    ("Han Market", "Chợ Hàn"),
+    ("Da Nang International Airport (DAD)", "Sân bay Đà Nẵng"),
+    ("Da Nang International Airport", "Sân bay Đà Nẵng"),
+    ("Da Nang Airport", "Sân bay Đà Nẵng"),
+    ("Marble Mountains (Ngũ Hành Sơn)", "Ngũ Hành Sơn"),
+    ("Marble Mountains", "Ngũ Hành Sơn"),
+    ("My Khe Beach (Bãi biển Mỹ Khê)", "Bãi biển Mỹ Khê"),
+    ("My Khe Beach Strip", "Dải biển Mỹ Khê"),
+    ("My Khe Beach", "Bãi biển Mỹ Khê"),
+    ("An Thuong Area", "Khu An Thượng"),
+    ("An Thuong (An Thượng)", "An Thượng"),
+    ("An Thuong", "An Thượng"),
+    ("Son Tra Peninsula (Bán đảo Sơn Trà)", "Bán đảo Sơn Trà"),
+    ("Son Tra Peninsula", "Bán đảo Sơn Trà"),
+    ("Son Tra Area", "Khu Sơn Trà"),
+    ("South Son Tra", "Khu Sơn Trà"),
+]
+
+
+def normalize_landmark_display_text(value: str | None) -> str:
+    text = str(value or "")
+    for source, target in LANDMARK_DISPLAY_REPLACEMENTS:
+        text = text.replace(source, target)
+    return text
 
 
 def chunk_md5(content: str) -> str:
@@ -585,7 +629,6 @@ def build_landmark_text(place: dict[str, Any]) -> tuple[str, dict[str, Any]] | N
     title = place.get("title") or "Unknown place"
     lines = [
         f"Nearby landmarks for {title}.",
-        "Distances are bird-flight haversine distances unless OSRM route metrics are shown elsewhere.",
     ]
     for entry in landmarks[:8]:
         anchor_label = entry.get("anchor_label")
@@ -1078,22 +1121,32 @@ def build_landmark_alias_map(landmarks: list[dict[str, Any]]) -> dict[str, str]:
     alias_map.update(
         {
             "cau rong": "dragon-bridge",
-            "dragon bridge": "dragon-bridge",
-            "cau song han": "han-bridge",
-            "han bridge": "han-bridge",
-            "bai bien my khe": "my-khe-beach",
-            "my khe": "my-khe-beach",
+            "cho dem son tra": "son-tra-night-market",
+            "son tra night market": "son-tra-night-market",
+            "cho dem helio": "helio-night-market",
+            "helio": "helio-night-market",
+            "helio night market": "helio-night-market",
+            "cong vien bien dong": "east-sea-park",
+            "bien dong": "east-sea-park",
+            "east sea park": "east-sea-park",
+            "cho con": "con-market",
+            "con market": "con-market",
             "san bay da nang": "da-nang-airport",
             "da nang airport": "da-nang-airport",
             "cho han": "han-market",
-            "an thuong": "an-thuong",
             "ban dao son tra": "son-tra-peninsula",
-            "son tra": "son-tra-peninsula",
-            "ngu hanh son": "marble-mountains",
-            "marble mountains": "marble-mountains",
         }
     )
     return alias_map
+
+
+def is_district_area_mention(normalized_query: str, district_alias: str) -> bool:
+    """Distinguish 'khu vực/quận Ngũ Hành Sơn' from the Marble Mountains landmark."""
+    area_prefixes = ("khu vuc", "quan", "q", "o", "tai", "khu")
+    return any(
+        re.search(rf"(?:^|\s){re.escape(prefix)}\s+{re.escape(district_alias)}(?:\s|$)", normalized_query)
+        for prefix in area_prefixes
+    )
 
 
 def parse_structured_intent(
@@ -1110,7 +1163,20 @@ def parse_structured_intent(
             intent.type_slugs.append(type_slug)
             intent.signals.append(f"type:{type_slug}")
 
+    district_area_aliases = {
+        alias: district
+        for alias, district in DISTRICT_ALIASES.items()
+        if alias in normalized and is_district_area_mention(normalized, alias)
+    }
+    for alias, district in district_area_aliases.items():
+        intent.district_names.append(district)
+        intent.signals.append(f"district:{district}")
+
     for alias, slug in landmark_aliases.items():
+        if slug == "marble-mountains" and "ngu hanh son" in district_area_aliases:
+            continue
+        if slug == "son-tra-peninsula" and "son tra" in district_area_aliases:
+            continue
         if alias and alias in normalized:
             intent.landmark_slugs.append(slug)
             intent.signals.append(f"landmark:{slug}")
@@ -1151,6 +1217,7 @@ def parse_structured_intent(
         intent.zone_slugs.append("my-khe-strip")
 
     intent.type_slugs = unique_preserve(intent.type_slugs)
+    intent.district_names = unique_preserve(intent.district_names)
     intent.landmark_slugs = unique_preserve(intent.landmark_slugs)
     intent.zone_slugs = unique_preserve(intent.zone_slugs)
     intent.amenity_labels = unique_preserve(intent.amenity_labels)
@@ -1172,6 +1239,9 @@ def fetch_candidate_places(
     if intent.type_slugs:
         inner_where.append("p.type_slug = ANY(%s)")
         where_params.append(intent.type_slugs)
+    if intent.district_names:
+        inner_where.append("p.district = ANY(%s)")
+        where_params.append(intent.district_names)
     if intent.min_rating is not None:
         inner_where.append("p.rating >= %s")
         where_params.append(intent.min_rating)
@@ -1361,39 +1431,114 @@ def build_generation_context(
     semantic_matches: list[dict[str, Any]],
     context_notes: list[dict[str, Any]],
 ) -> str:
-    lines = [f"User query: {query}", "", "Structured intent:"]
-    lines.append(json.dumps(intent.__dict__, ensure_ascii=False, indent=2))
+    lines = [f"User query: {query}", "", "Understood criteria (for the ✓ confirmation block):"]
+    lines.append(describe_intent_for_prompt(intent))
     lines.append("")
-    lines.append("Candidate places:")
-    for place in candidate_places[:5]:
+
+    capacity_request = detect_capacity_request(query)
+    if capacity_request:
         lines.append(
-            f"- {place.get('title')} | type={place.get('type_slug')} | rating={place.get('rating')} | "
-            f"reviews={place.get('reviews_count')} | district={place.get('district')} | "
-            f"nearest_distance={format_distance_m(place.get('landmark_distance_m')) if place.get('landmark_distance_m') is not None else 'n/a'}"
+            "Capacity note: người dùng có nhắc tới quy mô nhóm / số người "
+            f"({capacity_request}), nhưng dữ liệu chỗ ở KHÔNG có trường sức chứa phòng. "
+            "Hãy nói thật là chưa thể xác nhận phòng phù hợp cho số người này."
         )
-        for landmark in place.get("nearest_landmarks") or []:
-            lines.append(
-                f"  nearest landmark: {landmark.get('name')} ({format_distance_m(landmark.get('distance_m'))}, bird-flight)"
-            )
+        lines.append("")
+
+    lines.append("Candidate places (use real values only, skip anything marked n/a):")
+    for place in candidate_places[:5]:
+        rating = place.get("rating")
+        rating_text = f"{rating:.1f}" if isinstance(rating, (int, float)) else "n/a"
+        lines.append(
+            f"- {place.get('title')} | loại hình={place.get('type_slug') or 'n/a'} | "
+            f"điểm={rating_text} | số review={place.get('reviews_count') or 'n/a'} | "
+            f"khu vực={place.get('district') or place.get('neighborhood') or 'n/a'}"
+        )
+        if not intent.district_names:
+            for landmark in place.get("nearest_landmarks") or []:
+                distance = landmark.get("distance_m")
+                if distance is None:
+                    continue
+                lines.append(
+                f"  cách {normalize_landmark_display_text(landmark.get('name'))} khoảng {format_distance_m(distance)}"
+                )
         if place.get("amenity_labels"):
-            lines.append(f"  amenities: {', '.join(place['amenity_labels'][:8])}")
+            lines.append(f"  tiện ích: {', '.join(place['amenity_labels'][:8])}")
 
     if semantic_matches:
         lines.append("")
-        lines.append("Retrieved chunk excerpts:")
+        lines.append("Bằng chứng nội dung liên quan (chỉ dùng để hiểu thêm, không trích nguyên văn kỹ thuật):")
         for match in semantic_matches[:5]:
-            excerpt = re.sub(r"\s+", " ", str(match.get("content") or "")).strip()[:380]
-            lines.append(
-                f"- {match.get('title')} | vector_distance={match.get('vector_distance')}: {excerpt}"
+            excerpt = normalize_landmark_display_text(
+                re.sub(r"\s+", " ", str(match.get("content") or "")).strip()[:380]
             )
+            lines.append(f"- {match.get('title')}: {excerpt}")
 
     if context_notes:
         lines.append("")
-        lines.append("Local context notes:")
+        lines.append("Bối cảnh địa phương:")
         for note in context_notes:
             lines.append(f"- {note['title']}: {note['content']}")
 
     return "\n".join(lines).strip()
+
+
+CAPACITY_PATTERNS = [
+    re.compile(r"(\d+)\s*(?:nguoi|người|khach|khách|adults?|people|pax|guests?)"),
+    re.compile(r"gia\s*dinh|gia\s*đình|family|nhom\s*ban|nhóm\s*bạn|couple|cap\s*doi|cặp\s*đôi"),
+]
+
+
+def detect_capacity_request(query: str) -> str | None:
+    """Return a short description if the user mentions a group size / room capacity need."""
+    normalized = normalize_text(query)
+    number_match = re.search(r"(\d+)\s*(?:nguoi|khach|adults?|people|pax|guests?)", normalized)
+    if number_match:
+        return f"{number_match.group(1)} người"
+    if re.search(r"gia dinh|family", normalized):
+        return "gia đình"
+    if re.search(r"nhom ban|group", normalized):
+        return "nhóm bạn"
+    if re.search(r"cap doi|couple|honeymoon", normalized):
+        return "cặp đôi"
+    return None
+
+
+def describe_intent_for_prompt(intent: StructuredIntent) -> str:
+    """Human-readable Vietnamese summary of what the system understood from the query."""
+    criteria: list[str] = []
+    landmark_names = {
+        "son-tra-peninsula": "Gần bán đảo Sơn Trà",
+        "son-tra-night-market": "Gần chợ đêm Sơn Trà",
+        "helio-night-market": "Gần chợ đêm Helio",
+        "dragon-bridge": "Gần Cầu Rồng",
+        "da-nang-airport": "Gần sân bay",
+        "east-sea-park": "Gần Công viên Biển Đông",
+        "con-market": "Gần Chợ Cồn",
+        "han-market": "Gần Chợ Hàn",
+    }
+    type_names = {
+        "hotel": "Khách sạn",
+        "homestay": "Homestay",
+        "hostel": "Hostel",
+        "villa": "Villa",
+        "resort": "Resort",
+        "can-ho": "Căn hộ",
+    }
+    for district in intent.district_names:
+        criteria.append(f"Khu vực {district}")
+    for slug in intent.landmark_slugs:
+        criteria.append(landmark_names.get(slug, slug.replace("-", " ")))
+    if "my-khe-strip" in intent.zone_slugs and "east-sea-park" not in intent.landmark_slugs:
+        criteria.append("Gần biển")
+    for slug in intent.type_slugs:
+        criteria.append(type_names.get(slug, slug.replace("-", " ")))
+    for label in intent.amenity_labels:
+        criteria.append(label)
+    if intent.min_rating is not None:
+        criteria.append(f"Đánh giá từ {intent.min_rating}/5 trở lên")
+    if not criteria:
+        return "(chưa rút ra được tiêu chí cụ thể; hãy hỏi lại nhẹ nhàng để làm rõ nhu cầu)"
+    return "\n".join(f"✓ {item}" for item in unique_preserve(criteria))
 
 
 def maybe_generate_answer(
@@ -1407,21 +1552,47 @@ def maybe_generate_answer(
         return None
     if provider != "anthropic" and not get_chat_api_key():
         return None
-    model = create_chat_model(model_name, temperature=0.2)
+    model = create_chat_model(model_name, temperature=0.3)
     prompt = [
         (
             "system",
-            "You are StayFinder's Da Nang lodging assistant for a consumer mobile app. "
-            "Answer naturally in Vietnamese unless the user asks for another language. "
-            "For lodging questions, answer only from the provided context and do not invent prices, "
-            "amenities, policies, safety claims, or travel times. Distances are bird-flight haversine "
-            "distances, so say that explicitly when you mention them. If a detail is not supported, "
-            "use customer-facing wording such as 'mình chưa thể xác nhận thông tin đó trên hồ sơ hiện tại' "
-            "or suggest a next filter; do not say dataset, database, RAG, chunks, embeddings, model, "
-            "developer, backend, prompt, or internal data. For greetings or capability questions, answer "
-            "briefly and steer back to helping with places to stay in Da Nang.",
+            "Bạn là StayFinder AI, trợ lý tư vấn chỗ ở tại Đà Nẵng trong một app du lịch. "
+            "Trả lời bằng tiếng Việt tự nhiên, ấm áp như một chuyên viên tư vấn thật, "
+            "trừ khi người dùng yêu cầu ngôn ngữ khác.\n"
+            "\n"
+            "QUAN TRỌNG: KHÔNG được liệt kê dữ liệu một cách máy móc. Hãy TƯ VẤN như một chuyên viên: "
+            "tổng hợp nhu cầu rồi đề xuất ngắn gọn. Trình bày NGẮN GỌN, có phân tách rõ ràng "
+            "(giữ nguyên emoji và xuống dòng), theo đúng cấu trúc sau:\n"
+            "\n"
+            "1) MỘT câu mở đầu trung tính, ví dụ: "
+            "'Mình tìm được 2 lựa chọn phù hợp với yêu cầu gần biển và cho phép thú cưng:'\n"
+            "\n"
+            "2) Liệt kê tối đa 3 chỗ, mỗi chỗ là một khối ngắn (chỉ ghi dòng nào có dữ liệu thật, để một dòng trống giữa các chỗ):\n"
+            "🏨 <Tên chỗ ở>\n"
+            "⭐ <điểm>/5\n"
+            "📍 <Khu vực> hoặc Cách <mốc> khoảng <khoảng cách>\n"
+            "🐶 Cho phép thú cưng (nếu có)\n"
+            "🍳 Có bữa sáng (nếu có)\n"
+            "🏊 Có hồ bơi (nếu có)\n"
+            "\n"
+            "3) Nếu có điều chưa xác nhận được (đặc biệt khi người dùng nói về số người / gia đình / nhóm "
+            "mà dữ liệu KHÔNG có thông tin sức chứa phòng), thêm khối 'Điểm cần lưu ý:' với các dòng bắt đầu bằng •, ví dụ: "
+            "'• Chưa có dữ liệu sức chứa phòng nên chưa thể xác nhận phòng cho 4 người'. Phải trung thực, KHÔNG được giả định chỗ đó chứa đủ số người.\n"
+            "\n"
+            "QUY TẮC NỘI DUNG:\n"
+            "- Chỉ dùng dữ liệu trong context được cung cấp. KHÔNG bịa giá, tiện nghi, chính sách, mức an toàn hay thời gian di chuyển.\n"
+            "- Nếu người dùng hỏi 'khu vực/quận Ngũ Hành Sơn/Sơn Trà/Hải Châu...', hãy ưu tiên nói 'Khu vực <quận>' thay vì khoảng cách tới landmark. "
+            "Không được nói một chỗ 'gần Ngũ Hành Sơn' nếu khoảng cách tới landmark là nhiều km.\n"
+            "- Khoảng cách: nói thân thiện và xấp xỉ như 'cách biển Mỹ Khê khoảng 500m'. "
+            "TUYỆT ĐỐI không dùng thuật ngữ kỹ thuật như 'đường chim bay', 'haversine', 'OSRM', con số quá lẻ. "
+            "Nếu không có dữ liệu khoảng cách thì bỏ qua dòng đó, đừng đoán.\n"
+            "- Nếu một tiêu chí người dùng yêu cầu mà dữ liệu không xác nhận được, hãy nói thật một cách lịch sự "
+            "('hiện mình chưa thể xác nhận thông tin đó') thay vì bịa.\n"
+            "- KHÔNG nhắc tới các từ kỹ thuật nội bộ: dataset, database, RAG, chunk, embedding, model, vector, backend, prompt, dữ liệu nội bộ.\n"
+            "- Với lời chào hoặc câu hỏi về năng lực, trả lời ngắn gọn rồi dẫn dắt về việc tìm chỗ ở tại Đà Nẵng.\n"
+            "- Giữ câu trả lời gọn gàng, dễ đọc trên màn hình điện thoại; không viết một đoạn văn dài liền mạch.",
         ),
-        ("human", f"{context_text}\n\nPlease answer the user query: {query}"),
+        ("human", f"{context_text}\n\nHãy trả lời câu hỏi của người dùng: {query}"),
     ]
     try:
         response = model.invoke(prompt)
@@ -1624,7 +1795,7 @@ def generate_llm_review_summary(place: dict[str, Any], *, model_name: str) -> di
     summary_text = str(payload.get("summary_text") or "").strip()
     bullets = [str(item).strip() for item in (payload.get("bullets") or []) if str(item).strip()]
     if not summary_text:
-        raise SystemExit("Configured chat provider returned an empty summary_text for review summary generation.")
+        raise RuntimeError("Configured chat provider returned an empty summary_text for review summary generation.")
     return {
         "summary_text": summary_text,
         "bullets": unique_preserve(bullets)[:6],
@@ -1636,6 +1807,22 @@ def generate_llm_review_summary(place: dict[str, Any], *, model_name: str) -> di
             "strategy": f"chat-provider:{get_chat_provider()}",
         },
     }
+
+
+def generate_review_summary(place: dict[str, Any], *, model_name: str, use_llm: bool) -> dict[str, Any]:
+    if not use_llm:
+        return build_fallback_summary(place)
+
+    try:
+        return generate_llm_review_summary(place, model_name=model_name)
+    except (Exception, SystemExit) as exc:
+        fallback = build_fallback_summary(place)
+        fallback["metadata"] = {
+            **fallback["metadata"],
+            "strategy": f"fallback-after-llm-error:{get_chat_provider()}",
+            "llm_error": str(exc),
+        }
+        return fallback
 
 
 def upsert_review_summary(conn, place_uuid: str, payload: dict[str, Any]) -> None:
@@ -1690,10 +1877,11 @@ def cmd_review_summary(args: argparse.Namespace) -> int:
             print(json.dumps({"source": "cache", **cached}, ensure_ascii=False, indent=2, default=str))
             return 0
 
-    if args.use_llm:
-        payload = generate_llm_review_summary(place, model_name=args.chat_model)
-    else:
-        payload = build_fallback_summary(place)
+    payload = generate_review_summary(
+        place,
+        model_name=args.chat_model,
+        use_llm=args.use_llm,
+    )
 
     upsert_review_summary(conn, str(place["id"]), payload)
     print(

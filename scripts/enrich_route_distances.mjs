@@ -71,6 +71,7 @@ async function main() {
   const limit = parseInteger(process.env.OSRM_ENRICH_LIMIT, 500);
   const onlyMissing = String(process.env.OSRM_ENRICH_ONLY_MISSING ?? "true") !== "false";
   const baseUrl = process.env.OSRM_BASE_URL || "https://router.project-osrm.org";
+  const maxDistanceM = parseInteger(process.env.OSRM_ENRICH_MAX_DISTANCE_M, 5000);
   const timeoutMs = parseInteger(process.env.OSRM_TIMEOUT_MS, 8000);
   const concurrency = parseInteger(process.env.OSRM_ENRICH_CONCURRENCY, 3);
 
@@ -98,9 +99,10 @@ async function main() {
         AND plm.anchor_lat IS NOT NULL
         AND plm.anchor_lng IS NOT NULL
         AND ($1::boolean = false OR plm.walking_distance_m IS NULL OR plm.driving_distance_m IS NULL)
+        AND plm.distance_m <= $3
       ORDER BY plm.distance_m ASC NULLS LAST, plm.computed_at ASC NULLS FIRST
       LIMIT $2`,
-    [onlyMissing, limit],
+    [onlyMissing, limit, maxDistanceM],
   );
 
   let updated = 0;
@@ -108,7 +110,7 @@ async function main() {
 
   await runConcurrent(result.rows, concurrency, async (row) => {
     try {
-      const [walking, driving] = await Promise.all([
+      const [walkingResult, drivingResult] = await Promise.allSettled([
         fetchOsrmRoute(
           baseUrl,
           "foot",
@@ -129,6 +131,27 @@ async function main() {
         ),
       ]);
 
+      const walking = walkingResult.status === "fulfilled" ? walkingResult.value : null;
+      const driving = drivingResult.status === "fulfilled" ? drivingResult.value : null;
+
+      if (!walking && !driving) {
+        throw new Error(
+          [
+            walkingResult.status === "rejected" ? `walking: ${walkingResult.reason.message}` : null,
+            drivingResult.status === "rejected" ? `driving: ${drivingResult.reason.message}` : null,
+          ]
+            .filter(Boolean)
+            .join("; "),
+        );
+      }
+
+      if (!walking || !driving) {
+        console.warn(
+          `[route-enrich] partial metric=${row.metric_id} place=${row.place_id} landmark=${row.landmark_slug}: ` +
+            `${walking ? "walking ok" : "walking missing"}, ${driving ? "driving ok" : "driving missing"}`,
+        );
+      }
+
       await pool.query(
         `UPDATE place_landmark_metrics
          SET walking_distance_m = $2,
@@ -140,10 +163,10 @@ async function main() {
          WHERE id = $1::uuid`,
         [
           row.metric_id,
-          walking.distance_m,
-          walking.duration_s,
-          driving.distance_m,
-          driving.duration_s,
+          walking?.distance_m ?? null,
+          walking?.duration_s ?? null,
+          driving?.distance_m ?? null,
+          driving?.duration_s ?? null,
         ],
       );
       updated += 1;
@@ -172,6 +195,7 @@ async function main() {
         updated,
         failed,
         concurrency,
+        maxDistanceM,
         coverage: coverage.rows[0],
       },
       null,

@@ -1,32 +1,37 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useRef, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import Animated, { FadeInLeft, FadeInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { SafeImage } from "@/components/safe-image";
+import { CardPreviewImage } from "@/components/card-preview-image";
 import { theme } from "@/constants/theme";
 import { fetchChatQuery, stayfinderApiBaseUrl, type PlaceSummary } from "@/lib/stayfinder";
-import { formatPriceText, formatRating, getImageSource } from "@/lib/stayfinder-ui";
-
-const fallbackImage = require("../../assets/results/detail-hero.jpg");
-const headerTitle = "AI Tư vấn Đà Nẵng";
-const statusText = "Đang kết nối RAG";
+import { formatPriceText, formatRating } from "@/lib/stayfinder-ui";
+const headerTitle = "StayFinder AI";
+const statusText = "Đang hoạt động";
 
 type ChatMessage = {
   id: string;
   role: "assistant" | "user";
   text: string;
   recommendedPlaces?: PlaceSummary[];
+  followUpPrompts?: string[];
 };
 
 const initialMessages: ChatMessage[] = [
   {
     id: "assistant-welcome",
     role: "assistant",
-    text: "Chào bạn, mình là StayFinder AI. Bạn có thể hỏi về khu vực, tiện nghi, khoảng cách tới biển/sân bay/trung tâm hoặc kiểu chỗ ở ở Đà Nẵng.",
+    text: "Xin chào 👋\n\nMình là StayFinder AI, có thể giúp bạn tìm chỗ ở tại Đà Nẵng theo nhu cầu thực tế: gần biển, cho gia đình, gần sân bay, có hồ bơi...\n\nBạn đang tìm loại hình nào?",
+    followUpPrompts: [
+      "🏖️ Khách sạn gần biển",
+      "👨‍👩‍👧‍👦 Homestay cho gia đình",
+      "✈️ Chỗ ở gần sân bay",
+      "🏊 Resort có hồ bơi",
+    ],
   },
 ];
 
@@ -56,23 +61,54 @@ export default function ChatTabRoute() {
 
   const [draftMessage, setDraftMessage] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initialMessages]);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [pendingAssistantReplies, setPendingAssistantReplies] = useState(0);
 
   const hasDraftMessage = draftMessage.trim().length > 0;
   const isAssistantTyping = pendingAssistantReplies > 0;
   const userMessageMaxWidth = Math.min(width * 0.56, 214);
-  const assistantMessageMaxWidth = Math.min(width * 0.66, 236);
+  const assistantMessageMaxWidth = Math.min(width * 0.82, 320);
   const suggestionCardWidth = Math.min(width - 152, 226);
   const suggestionImageSize = Math.min(76, Math.max(66, width * 0.2));
+  const isKeyboardVisible = keyboardHeight > 0;
+  const keyboardLift = Platform.OS === "ios" ? keyboardHeight : 0;
+  const composerBottom = isKeyboardVisible ? keyboardLift + 10 : Math.max(insets.bottom + 86, 102);
+  const scrollBottomPadding = isKeyboardVisible
+    ? keyboardLift + 96
+    : Math.max(insets.bottom + 224, 240);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardWillShow", (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+      requestAnimationFrame(() => scrollToBottom());
+    });
+    const didShowSubscription = Keyboard.addListener("keyboardDidShow", (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+      requestAnimationFrame(() => scrollToBottom());
+    });
+    const hideSubscription = Keyboard.addListener("keyboardWillHide", () => {
+      setKeyboardHeight(0);
+    });
+    const didHideSubscription = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      didShowSubscription.remove();
+      hideSubscription.remove();
+      didHideSubscription.remove();
+    };
+  }, []);
 
   function scrollToBottom(animated = true) {
     scrollViewRef.current?.scrollToEnd({ animated });
   }
 
-  async function handleSendMessage() {
-    const trimmedMessage = draftMessage.trim();
+  async function handleSendMessage(overrideText?: string) {
+    const trimmedMessage = (overrideText ?? draftMessage).trim();
 
-    if (!trimmedMessage) {
+    if (!trimmedMessage || isAssistantTyping) {
       return;
     }
 
@@ -95,6 +131,7 @@ export default function ChatTabRoute() {
           role: "assistant",
           text: response.answer,
           recommendedPlaces: response.recommended_places,
+          followUpPrompts: response.follow_up_prompts,
         },
       ]);
     } catch (error) {
@@ -123,7 +160,7 @@ export default function ChatTabRoute() {
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
           gap: 16,
-          paddingBottom: Math.max(insets.bottom + 224, 240),
+          paddingBottom: scrollBottomPadding,
           paddingHorizontal: 18,
           paddingTop: Math.max(insets.top + 8, 18),
         }}
@@ -204,6 +241,7 @@ export default function ChatTabRoute() {
           }
 
           const recommendedPlaces = message.recommendedPlaces || [];
+          const followUpPrompts = message.id === "assistant-welcome" ? message.followUpPrompts || [] : [];
 
           return (
             <View key={message.id} style={{ flexDirection: "row", gap: 9 }}>
@@ -266,9 +304,8 @@ export default function ChatTabRoute() {
                               boxShadow: "0 14px 34px rgba(20, 27, 52, 0.08)",
                             })}
                           >
-                            <SafeImage
-                              fallbackSource={fallbackImage}
-                              source={getImageSource(item.cover_image, fallbackImage)}
+                            <CardPreviewImage
+                              source={item.cover_image ? { uri: item.cover_image } : null}
                               style={{
                                 borderRadius: 12,
                                 height: suggestionImageSize,
@@ -302,6 +339,48 @@ export default function ChatTabRoute() {
                         ))}
                       </View>
                     </ScrollView>
+                  </Animated.View>
+                ) : null}
+
+                {followUpPrompts.length ? (
+                  <Animated.View entering={FadeInLeft.duration(260)} style={{ gap: 9 }}>
+                    <Text
+                      selectable
+                      style={{
+                        color: "#868DA5",
+                        fontSize: 10,
+                        fontWeight: "600",
+                        letterSpacing: 0.65,
+                      }}
+                    >
+                      LỌC NHANH
+                    </Text>
+
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                      {followUpPrompts.map((prompt) => (
+                        <Pressable
+                          key={prompt}
+                          disabled={isAssistantTyping}
+                          onPress={() => handleSendMessage(prompt)}
+                          style={({ pressed }) => ({
+                            alignItems: "center",
+                            backgroundColor: "#EAF0FF",
+                            borderRadius: 999,
+                            borderCurve: "continuous",
+                            flexDirection: "row",
+                            gap: 5,
+                            opacity: pressed || isAssistantTyping ? 0.6 : 1,
+                            paddingHorizontal: 13,
+                            paddingVertical: 8,
+                          })}
+                        >
+                          <Feather color={theme.colors.accent} name="sliders" size={11} />
+                          <Text selectable style={{ color: theme.colors.accent, fontSize: 12.5, fontWeight: "600" }}>
+                            {prompt}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   </Animated.View>
                 ) : null}
               </View>
@@ -352,7 +431,7 @@ export default function ChatTabRoute() {
       <View
         pointerEvents="box-none"
         style={{
-          bottom: Math.max(insets.bottom + 86, 102),
+          bottom: composerBottom,
           left: 0,
           paddingHorizontal: 18,
           position: "absolute",
@@ -380,7 +459,7 @@ export default function ChatTabRoute() {
             blurOnSubmit={false}
             onChangeText={setDraftMessage}
             onFocus={() => scrollToBottom(false)}
-            onSubmitEditing={handleSendMessage}
+            onSubmitEditing={() => handleSendMessage()}
             placeholder="Nhắn cho StayFinder AI..."
             placeholderTextColor="#B3BACD"
             returnKeyType="send"
@@ -397,7 +476,7 @@ export default function ChatTabRoute() {
 
           <Pressable
             disabled={!hasDraftMessage}
-            onPress={handleSendMessage}
+            onPress={() => handleSendMessage()}
             style={({ pressed }) => ({
               alignItems: "center",
               backgroundColor: hasDraftMessage ? theme.colors.accent : "#E8EEFA",

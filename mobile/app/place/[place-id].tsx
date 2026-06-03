@@ -30,7 +30,7 @@ import {
 import {
   derivePlaceTags,
   filterUsableImageUrls,
-  formatDistanceMeters,
+  formatLandmarkMetricDistance,
   formatLocation,
   formatPriceText,
   formatRating,
@@ -51,6 +51,25 @@ function getPlaceId(value: string | string[] | undefined) {
 
 function normalizeText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function formatAiSummaryError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  const normalized = normalizeText(message);
+
+  if (
+    normalized.includes("khong tim thay dia diem") ||
+    normalized.includes("no place matched") ||
+    normalized.includes("not found")
+  ) {
+    return "Không tìm thấy địa điểm này trong database hiện tại để tạo tóm tắt AI. Bạn thử mở lại địa điểm từ danh sách kết quả mới nhất.";
+  }
+
+  if (normalized.includes("command failed")) {
+    return "AI summary chưa chạy được ở backend. Bạn kiểm tra cấu hình database/LLM rồi thử lại.";
+  }
+
+  return message || "Không sinh được AI tóm tắt.";
 }
 
 function AmenityIcon({
@@ -113,7 +132,7 @@ function DetailTagIcon({ tag }: { tag: string }) {
 }
 
 async function tryOpenUrl(url: string | null | undefined) {
-  const cleaned = String(url || "").trim();
+  const cleaned = normalizeExternalUrl(url);
   if (!cleaned) {
     return;
   }
@@ -122,6 +141,213 @@ async function tryOpenUrl(url: string | null | undefined) {
   if (supported) {
     await Linking.openURL(cleaned);
   }
+}
+
+type PlaceExternalLink = {
+  kind: "website" | "booking" | "social";
+  label: string;
+  subtitle?: string;
+  url: string;
+};
+
+const socialHostLabels: Array<[string, string]> = [
+  ["facebook.com", "Facebook"],
+  ["fb.com", "Facebook"],
+  ["instagram.com", "Instagram"],
+  ["tiktok.com", "TikTok"],
+  ["youtube.com", "YouTube"],
+  ["youtu.be", "YouTube"],
+  ["zalo.me", "Zalo"],
+];
+
+const bookingHostLabels: Array<[string, string]> = [
+  ["booking.com", "Booking.com"],
+  ["agoda.com", "Agoda"],
+  ["traveloka.com", "Traveloka"],
+  ["expedia.", "Expedia"],
+  ["hotels.com", "Hotels.com"],
+  ["tripadvisor.", "Tripadvisor"],
+  ["trip.com", "Trip.com"],
+  ["airbnb.", "Airbnb"],
+  ["hotelplanner.", "HotelPlanner"],
+  ["googleadservices.com", "Liên kết đặt phòng"],
+];
+
+function normalizeExternalUrl(value: string | null | undefined) {
+  const cleaned = String(value || "").trim();
+  if (!cleaned) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(cleaned) || /^tel:/i.test(cleaned)) {
+    return cleaned;
+  }
+
+  if (/^[\w.-]+\.[a-z]{2,}(?:\/.*)?$/i.test(cleaned)) {
+    return `https://${cleaned}`;
+  }
+
+  return cleaned;
+}
+
+function getUrlHost(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function getHostLabel(host: string, rules: Array<[string, string]>) {
+  const match = rules.find(([needle]) => host.includes(needle));
+  return match?.[1] || null;
+}
+
+function isGoogleMapsLikeHost(host: string) {
+  return (
+    host.includes("google.com") ||
+    host.includes("goo.gl") ||
+    host.includes("maps.app.goo.gl") ||
+    host.includes("googleusercontent.com")
+  );
+}
+
+function buildLinkItem(urlValue: unknown, fallbackLabel: string, subtitle?: string): PlaceExternalLink | null {
+  const url = normalizeExternalUrl(typeof urlValue === "string" ? urlValue : "");
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return null;
+  }
+
+  const host = getUrlHost(url);
+  if (!host) {
+    return null;
+  }
+
+  const socialLabel = getHostLabel(host, socialHostLabels);
+  if (socialLabel) {
+    return { kind: "social", label: socialLabel, subtitle: subtitle || host, url };
+  }
+
+  const bookingLabel = getHostLabel(host, bookingHostLabels);
+  if (bookingLabel) {
+    return { kind: "booking", label: bookingLabel, subtitle: subtitle || host, url };
+  }
+
+  if (isGoogleMapsLikeHost(host)) {
+    return null;
+  }
+
+  return { kind: "website", label: fallbackLabel || "Website chính", subtitle: host, url };
+}
+
+function extractHotelAdLinks(place: PlaceDetail) {
+  return (place.hotel_ads || [])
+    .flatMap((item) => {
+      const title = typeof item.title === "string" ? item.title : "Liên kết đặt phòng";
+      const price = typeof item.price === "string" ? item.price : undefined;
+      const googleUrl = normalizeExternalUrl(typeof item.googleUrl === "string" ? item.googleUrl : "");
+      const googleBookingLink =
+        googleUrl && /^https?:\/\//i.test(googleUrl)
+          ? ({ kind: "booking", label: title, subtitle: price || "Google Hotels", url: googleUrl } as const)
+          : null;
+      return [
+        buildLinkItem(item.url, title, price),
+        googleBookingLink,
+      ];
+    })
+    .filter((item): item is PlaceExternalLink => Boolean(item));
+}
+
+function extractAdditionalInfoLinks(value: unknown): PlaceExternalLink[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const links: PlaceExternalLink[] = [];
+  for (const [key, nested] of Object.entries(value)) {
+    if (typeof nested === "string") {
+      const item = buildLinkItem(nested, key);
+      if (item) {
+        links.push(item);
+      }
+    } else if (Array.isArray(nested)) {
+      for (const entry of nested) {
+        links.push(...extractAdditionalInfoLinks({ [key]: entry }));
+      }
+    } else if (nested && typeof nested === "object") {
+      links.push(...extractAdditionalInfoLinks(nested));
+    }
+  }
+  return links;
+}
+
+function classifyPlaceLinks(place: PlaceDetail) {
+  const links = [
+    buildLinkItem(place.website, "Website chính"),
+    ...extractHotelAdLinks(place),
+    ...extractAdditionalInfoLinks(place.additional_info),
+  ].filter((item): item is PlaceExternalLink => Boolean(item));
+
+  const uniqueLinks = new Map<string, PlaceExternalLink>();
+  for (const link of links) {
+    if (!uniqueLinks.has(link.url)) {
+      uniqueLinks.set(link.url, link);
+    }
+  }
+
+  const grouped = {
+    website: [] as PlaceExternalLink[],
+    booking: [] as PlaceExternalLink[],
+    social: [] as PlaceExternalLink[],
+  };
+  for (const link of uniqueLinks.values()) {
+    grouped[link.kind].push(link);
+  }
+
+  return grouped;
+}
+
+function LinkKindIcon({ kind }: { kind: PlaceExternalLink["kind"] }) {
+  if (kind === "social") {
+    return <Feather color={theme.colors.accent} name="message-circle" size={17} />;
+  }
+  if (kind === "booking") {
+    return <MaterialCommunityIcons color={theme.colors.accent} name="calendar-check-outline" size={19} />;
+  }
+  return <Feather color={theme.colors.accent} name="globe" size={17} />;
+}
+
+function LinkButton({ item }: { item: PlaceExternalLink }) {
+  return (
+    <Pressable
+      onPress={() => tryOpenUrl(item.url)}
+      style={({ pressed }) => ({
+        alignItems: "center",
+        backgroundColor: "#F8FAFF",
+        borderColor: theme.colors.chipBorder,
+        borderRadius: 14,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 10,
+        opacity: pressed ? 0.82 : 1,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+      })}
+    >
+      <LinkKindIcon kind={item.kind} />
+      <View style={{ flex: 1 }}>
+        <Text selectable numberOfLines={1} style={{ color: theme.colors.ink, fontSize: 14, fontWeight: "600" }}>
+          {item.label}
+        </Text>
+        {item.subtitle ? (
+          <Text selectable numberOfLines={1} style={{ color: theme.colors.muted, fontSize: 12, marginTop: 2 }}>
+            {item.subtitle}
+          </Text>
+        ) : null}
+      </View>
+      <Feather color={theme.colors.muted} name="external-link" size={15} />
+    </Pressable>
+  );
 }
 
 function SkeletonBlock({
@@ -370,9 +596,7 @@ export default function PlaceDetailRoute() {
           source: summary.source,
         });
       } catch (error) {
-        setAiSummaryError(
-          error instanceof Error ? error.message : "Không sinh được AI tóm tắt.",
-        );
+        setAiSummaryError(formatAiSummaryError(error));
       } finally {
         setIsAiSummaryLoading(false);
       }
@@ -391,6 +615,26 @@ export default function PlaceDetailRoute() {
   }, [place, aiSummary, isAiSummaryLoading, aiSummaryError, generateAiSummary]);
 
   const nearestLandmark = useMemo(() => getNearestLandmark(place?.landmark_metrics), [place]);
+  const landmarkMapPoints = useMemo(
+    () =>
+      (place?.landmark_metrics || [])
+        .filter(
+          (metric) =>
+            typeof metric.anchor_lat === "number" &&
+            Number.isFinite(metric.anchor_lat) &&
+            typeof metric.anchor_lng === "number" &&
+            Number.isFinite(metric.anchor_lng),
+        )
+        .slice(0, 5)
+        .map((metric) => ({
+          key: metric.landmark_slug,
+          name: metric.landmark_name,
+          latitude: metric.anchor_lat as number,
+          longitude: metric.anchor_lng as number,
+          distanceLabel: formatLandmarkMetricDistance(metric),
+        })),
+    [place?.landmark_metrics],
+  );
   const tags = useMemo(() => (place ? derivePlaceTags(place) : []), [place]);
   const amenityLabels = useMemo(() => (place ? pickAmenityLabels(place) : []), [place]);
   const reviewImageSet = useMemo(() => {
@@ -404,6 +648,15 @@ export default function PlaceDetailRoute() {
 
     return uniqueUrls.filter((url) => url === coverImageUrl || !reviewImageSet.has(url));
   }, [place, reviewImageSet]);
+  const externalLinks = useMemo(
+    () =>
+      place
+        ? classifyPlaceLinks(place)
+        : { website: [], booking: [], social: [] },
+    [place],
+  );
+  const primaryWebsite = externalLinks.website[0] || null;
+  const hasSecondaryLinks = externalLinks.booking.length > 0 || externalLinks.social.length > 0;
   const selectedGalleryIndex =
     galleryModalIndex === null
       ? 0
@@ -542,18 +795,19 @@ export default function PlaceDetailRoute() {
               </Pressable>
 
               <Pressable
-                onPress={() => tryOpenUrl(place.website)}
+                disabled={!primaryWebsite}
+                onPress={() => tryOpenUrl(primaryWebsite?.url)}
                 style={{
                   alignItems: "center",
                   backgroundColor: "rgba(255,255,255,0.94)",
                   borderRadius: 999,
                   height: 42,
                   justifyContent: "center",
-                  opacity: place.website ? 1 : 0.6,
+                  opacity: primaryWebsite ? 1 : 0.55,
                   width: 42,
                 }}
               >
-                <Feather color={theme.colors.ink} name="share-2" size={19} />
+                <Feather color={theme.colors.ink} name="globe" size={19} />
               </Pressable>
             </View>
           </SafeImageBackground>
@@ -595,7 +849,7 @@ export default function PlaceDetailRoute() {
           <View style={{ alignItems: "center", flexDirection: "row", gap: 10, marginTop: 10 }}>
             <Feather color={theme.colors.ink} name="map-pin" size={16} />
             <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "500" }}>
-              {nearestLandmark ? formatDistanceMeters(nearestLandmark.distance_m) : "Chưa có metric"}
+              {nearestLandmark ? formatLandmarkMetricDistance(nearestLandmark) : "Chưa có metric"}
             </Text>
             <Text selectable style={{ color: "#8A92A9", fontSize: 16 }}>•</Text>
             <Text selectable style={{ color: theme.colors.accent, fontSize: 15, fontWeight: "600" }}>
@@ -641,6 +895,49 @@ export default function PlaceDetailRoute() {
               </View>
             ))}
           </View>
+
+          {primaryWebsite || hasSecondaryLinks ? (
+            <View style={{ gap: 14, marginTop: 26 }}>
+              <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "700" }}>
+                Liên kết
+              </Text>
+
+              {primaryWebsite ? (
+                <View style={{ gap: 8 }}>
+                  <Text selectable style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>
+                    WEBSITE CHÍNH
+                  </Text>
+                  <LinkButton item={primaryWebsite} />
+                </View>
+              ) : null}
+
+              {externalLinks.booking.length ? (
+                <View style={{ gap: 8 }}>
+                  <Text selectable style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>
+                    BOOKING / ƯU ĐÃI
+                  </Text>
+                  <View style={{ gap: 8 }}>
+                    {externalLinks.booking.slice(0, 4).map((item) => (
+                      <LinkButton key={item.url} item={item} />
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {externalLinks.social.length ? (
+                <View style={{ gap: 8 }}>
+                  <Text selectable style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>
+                    SOCIAL
+                  </Text>
+                  <View style={{ gap: 8 }}>
+                    {externalLinks.social.slice(0, 4).map((item) => (
+                      <LinkButton key={item.url} item={item} />
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           <View
             style={{
@@ -928,7 +1225,12 @@ export default function PlaceDetailRoute() {
             <Text selectable style={{ color: theme.colors.ink, fontSize: 20, fontWeight: "700" }}>
               Vị trí
             </Text>
-            <DetailLocationMap latitude={place.lat} longitude={place.lng} title={place.title} />
+            <DetailLocationMap
+              landmarks={landmarkMapPoints}
+              latitude={place.lat}
+              longitude={place.lng}
+              title={place.title}
+            />
             <Text selectable style={{ color: theme.colors.ink, fontSize: 15, lineHeight: 23 }}>
               {place.address || formatLocation(place)}
             </Text>
@@ -958,7 +1260,7 @@ export default function PlaceDetailRoute() {
                       {metric.landmark_name}
                     </Text>
                     <Text selectable style={{ color: theme.colors.accent, fontSize: 14, fontWeight: "700" }}>
-                      {formatDistanceMeters(metric.distance_m)}
+                      {formatLandmarkMetricDistance(metric)}
                     </Text>
                   </View>
                 ))}
@@ -1173,22 +1475,22 @@ export default function PlaceDetailRoute() {
         </Pressable>
 
         <Pressable
-          disabled={!place.website}
-          onPress={() => tryOpenUrl(place.website)}
+          disabled={!primaryWebsite}
+          onPress={() => tryOpenUrl(primaryWebsite?.url)}
           style={({ pressed }) => ({
             alignItems: "center",
-            backgroundColor: theme.colors.accent,
+            backgroundColor: primaryWebsite ? theme.colors.accent : "#DDE5F4",
             borderRadius: 14,
             flex: 1,
             flexDirection: "row",
             gap: 10,
             justifyContent: "center",
-            opacity: pressed ? 0.85 : place.website ? 1 : 0.6,
+            opacity: pressed ? 0.85 : primaryWebsite ? 1 : 0.7,
           })}
         >
-          <Feather color="#FFFFFF" name="globe" size={20} />
-          <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "600" }}>
-            {place.website ? "Mở website" : "Chưa có website"}
+          <Feather color={primaryWebsite ? "#FFFFFF" : theme.colors.muted} name="globe" size={20} />
+          <Text style={{ color: primaryWebsite ? "#FFFFFF" : theme.colors.muted, fontSize: 16, fontWeight: "600" }}>
+            Website
           </Text>
         </Pressable>
       </View>

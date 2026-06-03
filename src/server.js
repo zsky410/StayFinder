@@ -199,9 +199,15 @@ function mapPlaceSummaryRow(row) {
     price_text: row.price_text,
     cover_image: coverImage,
     amenities_preview: row.amenities_preview || [],
-    nearest_landmarks: row.nearest_landmarks || [],
+    nearest_landmarks: normalizeLandmarkMetricsForResponse(row.nearest_landmarks || []),
     requested_landmark_distance_m: requestedDistance,
   };
+}
+
+function normalizeLandmarkMetricsForResponse(metrics) {
+  return Array.isArray(metrics)
+    ? metrics.map((metric) => normalizeMetricForResponse(metric))
+    : [];
 }
 
 function resolveMetricDistance(metric) {
@@ -224,7 +230,66 @@ function resolveMetricDistance(metric) {
 function normalizeMetricForResponse(metric) {
   const normalized = { ...metric };
   normalized.display_distance_m = resolveMetricDistance(metric);
+  normalized.distance_source =
+    metric?.walking_distance_m !== null && metric?.walking_distance_m !== undefined
+      ? "walking"
+      : metric?.driving_distance_m !== null && metric?.driving_distance_m !== undefined
+        ? "driving"
+        : "straight_line";
+  normalized.landmark_name = normalizeLandmarkDisplayName(normalized.landmark_name);
+  normalized.anchor_label = normalizeLandmarkDisplayName(normalized.anchor_label);
   return normalized;
+}
+
+const LANDMARK_DISPLAY_NAME_BY_SLUG = {
+  "son-tra-peninsula": "Bán đảo Sơn Trà",
+  "son-tra-night-market": "Chợ đêm Sơn Trà",
+  "helio-night-market": "Chợ đêm Helio",
+  "dragon-bridge": "Cầu Rồng",
+  "da-nang-airport": "Sân bay Đà Nẵng",
+  "east-sea-park": "Công viên Biển Đông",
+  "con-market": "Chợ Cồn",
+  "han-market": "Chợ Hàn",
+};
+
+const LANDMARK_DISPLAY_NAME_REPLACEMENTS = [
+  ["Dragon Bridge (Cầu Rồng)", "Cầu Rồng"],
+  ["Dragon Bridge", "Cầu Rồng"],
+  ["Han River Bridge (Cầu Sông Hàn)", "Cầu Sông Hàn"],
+  ["Han River Bridge", "Cầu Sông Hàn"],
+  ["Han Bridge", "Cầu Sông Hàn"],
+  ["Han Market (Chợ Hàn)", "Chợ Hàn"],
+  ["Han Market", "Chợ Hàn"],
+  ["Da Nang International Airport (DAD)", "Sân bay Đà Nẵng"],
+  ["Da Nang International Airport", "Sân bay Đà Nẵng"],
+  ["Da Nang Airport", "Sân bay Đà Nẵng"],
+  ["Marble Mountains (Ngũ Hành Sơn)", "Ngũ Hành Sơn"],
+  ["Marble Mountains", "Ngũ Hành Sơn"],
+  ["My Khe Beach (Bãi biển Mỹ Khê)", "Bãi biển Mỹ Khê"],
+  ["My Khe Beach Strip", "Dải biển Mỹ Khê"],
+  ["My Khe Beach", "Bãi biển Mỹ Khê"],
+  ["An Thuong Area", "Khu An Thượng"],
+  ["An Thuong (An Thượng)", "An Thượng"],
+  ["An Thuong", "An Thượng"],
+  ["Son Tra Peninsula (Bán đảo Sơn Trà)", "Bán đảo Sơn Trà"],
+  ["Son Tra Peninsula", "Bán đảo Sơn Trà"],
+  ["Son Tra Area", "Khu Sơn Trà"],
+  ["South Son Tra", "Khu Sơn Trà"],
+  ["Son Tra Night Market", "Chợ đêm Sơn Trà"],
+  ["Helio Night Market", "Chợ đêm Helio"],
+  ["East Sea Park", "Công viên Biển Đông"],
+  ["Con Market", "Chợ Cồn"],
+];
+
+function normalizeLandmarkDisplayName(value) {
+  let text = String(value || "").trim();
+  if (!text) {
+    return value;
+  }
+  for (const [from, to] of LANDMARK_DISPLAY_NAME_REPLACEMENTS) {
+    text = text.replaceAll(from, to);
+  }
+  return text;
 }
 
 function buildPlaceFilterContext(filters) {
@@ -402,11 +467,15 @@ async function listPlaces(filters, { includeBatchKey = false } = {}) {
                 'distance_m', COALESCE(near.walking_distance_m, near.driving_distance_m, near.distance_m),
                 'straight_line_distance_m', near.distance_m,
                 'walking_distance_m', near.walking_distance_m,
+                'walking_duration_s', near.walking_duration_s,
                 'driving_distance_m', near.driving_distance_m,
+                'driving_duration_s', near.driving_duration_s,
                 'method', near.method,
-                'anchor_label', near.anchor_label
+                'anchor_label', near.anchor_label,
+                'anchor_lat', near.anchor_lat,
+                'anchor_lng', near.anchor_lng
               )
-              ORDER BY COALESCE(near.walking_distance_m, near.driving_distance_m, near.distance_m) ASC NULLS LAST, near.slug ASC
+              ORDER BY near.distance_m ASC NULLS LAST, near.slug ASC
             )
             FROM (
               SELECT
@@ -414,13 +483,17 @@ async function listPlaces(filters, { includeBatchKey = false } = {}) {
                 l.name,
                 plm.distance_m,
                 plm.walking_distance_m,
+                plm.walking_duration_s,
                 plm.driving_distance_m,
+                plm.driving_duration_s,
                 plm.method,
-                plm.anchor_label
+                plm.anchor_label,
+                plm.anchor_lat,
+                plm.anchor_lng
               FROM place_landmark_metrics plm
               JOIN local_landmarks l ON l.id = plm.landmark_id
               WHERE plm.place_id = p.id
-              ORDER BY COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m) ASC NULLS LAST, l.slug ASC
+              ORDER BY plm.distance_m ASC NULLS LAST, l.slug ASC
               LIMIT 3
             ) AS near
           ),
@@ -477,6 +550,9 @@ async function getPlaceDetail(identifier) {
         p.hotel_description,
         p.opening_hours,
         p.additional_info,
+        p.url,
+        p.search_page_url,
+        p.hotel_ads,
         COALESCE(p.image_url, '') AS cover_image,
         COALESCE(
           (
@@ -539,11 +615,15 @@ async function getPlaceDetail(identifier) {
                 'distance_m', COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m),
                 'straight_line_distance_m', plm.distance_m,
                 'walking_distance_m', plm.walking_distance_m,
+                'walking_duration_s', plm.walking_duration_s,
                 'driving_distance_m', plm.driving_distance_m,
+                'driving_duration_s', plm.driving_duration_s,
                 'method', plm.method,
-                'anchor_label', plm.anchor_label
+                'anchor_label', plm.anchor_label,
+                'anchor_lat', plm.anchor_lat,
+                'anchor_lng', plm.anchor_lng
               )
-              ORDER BY COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m) ASC NULLS LAST, lm.slug ASC
+              ORDER BY plm.distance_m ASC NULLS LAST, lm.slug ASC
             )
             FROM place_landmark_metrics plm
             JOIN local_landmarks lm ON lm.id = plm.landmark_id
@@ -598,6 +678,9 @@ async function getPlaceDetail(identifier) {
     gallery: uniqueStrings([coverImage, ...gallery].filter(Boolean)),
     phone: row.phone,
     website: row.website,
+    source_url: row.url,
+    search_page_url: row.search_page_url,
+    hotel_ads: Array.isArray(row.hotel_ads) ? row.hotel_ads : [],
     opening_hours: row.opening_hours,
     additional_info: row.additional_info,
     price_text: row.price_text,
@@ -609,7 +692,7 @@ async function getPlaceDetail(identifier) {
           images: uniqueStrings(Array.isArray(review?.images) ? review.images : []),
         }))
       : [],
-    landmark_metrics: row.landmark_metrics || [],
+    landmark_metrics: normalizeLandmarkMetricsForResponse(row.landmark_metrics || []),
     ai_review_summary: row.ai_review_summary || null,
   };
 }
@@ -673,7 +756,10 @@ async function getFiltersMeta() {
     districts: districts.rows,
     neighborhoods: neighborhoods.rows,
     amenities: amenities.rows,
-    landmarks: landmarks.rows,
+    landmarks: landmarks.rows.map((item) => ({
+      ...item,
+      name: normalizeLandmarkDisplayName(item.name),
+    })),
     rating_range: {
       min: coerceRowNumber(ratings.rows[0]?.min_rating),
       max: coerceRowNumber(ratings.rows[0]?.max_rating),
@@ -701,7 +787,7 @@ async function getLandmarks() {
   return result.rows.map((row) => ({
     id: row.id,
     slug: row.slug,
-    name: row.name,
+    name: normalizeLandmarkDisplayName(row.name),
     kind: row.kind,
     lat: coerceRowNumber(row.lat),
     lng: coerceRowNumber(row.lng),
@@ -773,11 +859,15 @@ async function getPlaceSummariesByPlaceIdsWithMetrics(
                 'distance_m', COALESCE(near.walking_distance_m, near.driving_distance_m, near.distance_m),
                 'straight_line_distance_m', near.distance_m,
                 'walking_distance_m', near.walking_distance_m,
+                'walking_duration_s', near.walking_duration_s,
                 'driving_distance_m', near.driving_distance_m,
+                'driving_duration_s', near.driving_duration_s,
                 'method', near.method,
-                'anchor_label', near.anchor_label
+                'anchor_label', near.anchor_label,
+                'anchor_lat', near.anchor_lat,
+                'anchor_lng', near.anchor_lng
               )
-              ORDER BY COALESCE(near.walking_distance_m, near.driving_distance_m, near.distance_m) ASC NULLS LAST, near.slug ASC
+              ORDER BY near.distance_m ASC NULLS LAST, near.slug ASC
             )
             FROM (
               SELECT
@@ -785,13 +875,17 @@ async function getPlaceSummariesByPlaceIdsWithMetrics(
                 l.name,
                 plm.distance_m,
                 plm.walking_distance_m,
+                plm.walking_duration_s,
                 plm.driving_distance_m,
+                plm.driving_duration_s,
                 plm.method,
-                plm.anchor_label
+                plm.anchor_label,
+                plm.anchor_lat,
+                plm.anchor_lng
               FROM place_landmark_metrics plm
               JOIN local_landmarks l ON l.id = plm.landmark_id
               WHERE plm.place_id = p.id
-              ORDER BY COALESCE(plm.walking_distance_m, plm.driving_distance_m, plm.distance_m) ASC NULLS LAST, l.slug ASC
+              ORDER BY plm.distance_m ASC NULLS LAST, l.slug ASC
               LIMIT 3
             ) AS near
           ),
@@ -914,7 +1008,7 @@ async function fetchMatchedLandmarksForPlaces(placeIds, landmarkSlugs) {
   for (const row of result.rows) {
     metricsByPlaceId.set(row.place_id, {
       landmark_slug: row.landmark_slug,
-      landmark_name: row.landmark_name,
+      landmark_name: normalizeLandmarkDisplayName(row.landmark_name),
       distance_m: row.distance_m === null ? null : Number(row.distance_m),
       straight_line_distance_m:
         row.straight_line_distance_m === null ? null : Number(row.straight_line_distance_m),
@@ -923,69 +1017,341 @@ async function fetchMatchedLandmarksForPlaces(placeIds, landmarkSlugs) {
       driving_distance_m:
         row.driving_distance_m === null ? null : Number(row.driving_distance_m),
       method: row.method,
-      anchor_label: row.anchor_label,
+      anchor_label: normalizeLandmarkDisplayName(row.anchor_label),
     });
   }
 
   return metricsByPlaceId;
 }
 
+function normalizeVietnamese(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase();
+}
+
+function buildNeedPhrase(intent) {
+  const landmarkSlugs = intent.landmark_slugs || [];
+  const zoneSlugs = intent.zone_slugs || [];
+  const districtNames = intent.district_names || [];
+  const amenityKeys = (intent.amenity_labels || []).map(normalizeVietnamese);
+  const needs = [];
+
+  if (districtNames.length) {
+    needs.push(`khu vực ${districtNames[0]}`);
+  }
+  if (landmarkSlugs.includes("east-sea-park") || zoneSlugs.includes("my-khe-strip")) {
+    needs.push("gần biển");
+  }
+  if (landmarkSlugs.includes("da-nang-airport") || zoneSlugs.includes("airport-corridor")) {
+    needs.push("gần sân bay");
+  }
+  if (
+    landmarkSlugs.includes("dragon-bridge") ||
+    landmarkSlugs.includes("son-tra-night-market") ||
+    landmarkSlugs.includes("helio-night-market") ||
+    landmarkSlugs.includes("con-market") ||
+    landmarkSlugs.includes("han-market")
+  ) {
+    needs.push("gần trung tâm");
+  }
+  if (amenityKeys.some((key) => key.includes("vat nuoi") || key.includes("thu cung"))) {
+    needs.push("cho phép thú cưng");
+  }
+  if (amenityKeys.some((key) => key.includes("be boi") || key.includes("ho boi"))) {
+    needs.push("có hồ bơi");
+  }
+  if (amenityKeys.some((key) => key.includes("tre em") || key.includes("gia dinh"))) {
+    needs.push("phù hợp gia đình");
+  }
+  if (amenityKeys.some((key) => key.includes("bua sang"))) {
+    needs.push("có bữa sáng");
+  }
+  if (intent.min_rating !== null && intent.min_rating !== undefined) {
+    needs.push("đánh giá cao");
+  }
+
+  const top = uniqueStrings(needs).slice(0, 3);
+  if (!top.length) {
+    return "";
+  }
+  if (top.length === 1) {
+    return top[0];
+  }
+  return `${top.slice(0, -1).join(", ")} và ${top[top.length - 1]}`;
+}
+
+function hasDistrictAreaIntent(intent) {
+  return Boolean((intent.district_names || []).length);
+}
+
+function detectCapacityRequest(queryText) {
+  const normalized = normalizeVietnamese(queryText);
+  const numberMatch = normalized.match(/(\d+)\s*(?:nguoi|khach|adults?|people|pax|guests?)/);
+  if (numberMatch) {
+    return `${numberMatch[1]} người`;
+  }
+  if (/gia dinh|family/.test(normalized)) {
+    return "gia đình";
+  }
+  if (/nhom ban|group/.test(normalized)) {
+    return "nhóm bạn";
+  }
+  if (/cap doi|couple|honeymoon/.test(normalized)) {
+    return "cặp đôi";
+  }
+  return null;
+}
+
+function buildAmenityHighlightLines(amenities) {
+  const lines = [];
+  const seen = new Set();
+  const push = (emoji, text) => {
+    if (seen.has(emoji)) {
+      return;
+    }
+    seen.add(emoji);
+    lines.push(`${emoji} ${text}`);
+  };
+
+  for (const label of amenities || []) {
+    const key = normalizeVietnamese(label);
+    if (key.includes("vat nuoi") || key.includes("thu cung") || key.includes("pet")) {
+      push("🐶", "Cho phép thú cưng");
+    } else if (key.includes("bua sang") || key.includes("breakfast")) {
+      push("🍳", "Có bữa sáng");
+    } else if (key.includes("be boi") || key.includes("ho boi") || key.includes("pool")) {
+      push("🏊", "Có hồ bơi");
+    } else if (key.includes("tre em") || key.includes("gia dinh")) {
+      push("👨‍👩‍👧", "Phù hợp gia đình");
+    } else if (key.includes("wifi") || key.includes("wi fi")) {
+      push("📶", "Wi-Fi miễn phí");
+    } else if (key.includes("do xe") || key.includes("parking")) {
+      push("🅿️", "Có chỗ đỗ xe");
+    } else if (key.includes("san bay")) {
+      push("🚐", "Đưa đón sân bay");
+    }
+  }
+
+  return lines.slice(0, 3);
+}
+
+function resolvePlaceLocationLine(place, intent = {}) {
+  if (hasDistrictAreaIntent(intent)) {
+    return place.district || place.neighborhood
+      ? `📍 Khu vực ${place.district || place.neighborhood}`
+      : null;
+  }
+
+  const landmark = place.matched_landmark || place.nearest_landmarks?.[0];
+  if (landmark && landmark.distance_m !== null && landmark.distance_m !== undefined) {
+    const distance = Number(landmark.distance_m);
+    if (Number.isFinite(distance) && distance <= 3500) {
+      return `📍 Cách ${landmark.landmark_name} khoảng ${formatDistance(distance)}`;
+    }
+  }
+
+  return place.district || place.neighborhood
+    ? `📍 Khu vực ${place.district || place.neighborhood}`
+    : null;
+}
+
+function buildPlaceBlock(place, intent = {}) {
+  const lines = [`🏨 ${place.title || place.place_id}`];
+  if (typeof place.rating === "number") {
+    lines.push(`⭐ ${place.rating.toFixed(1)}/5`);
+  }
+  const locationLine = resolvePlaceLocationLine(place, intent);
+  if (locationLine) {
+    lines.push(locationLine);
+  }
+  for (const line of buildAmenityHighlightLines(place.amenities_preview)) {
+    lines.push(line);
+  }
+  return lines.join("\n");
+}
+
+function buildCaveatBullets(queryText, recommendedPlaces) {
+  const bullets = [];
+  const capacity = detectCapacityRequest(queryText);
+  if (capacity) {
+    bullets.push(`Chưa có dữ liệu sức chứa phòng nên chưa thể xác nhận phòng cho ${capacity}`);
+  }
+  if (recommendedPlaces.length === 1) {
+    bullets.push("Hiện chỉ có 1 chỗ khớp sát tiêu chí; bạn có thể nới điều kiện để có thêm lựa chọn");
+  }
+  return bullets;
+}
+
 function buildFallbackAnswer(queryResult, recommendedPlaces) {
+  const intent = queryResult.intent || {};
+  const queryText = queryResult.query || "";
+
   if (!recommendedPlaces.length) {
-    if (!hasStayRecommendationIntent(queryResult.query || "", queryResult.intent || {})) {
-      return "Chào bạn, mình là StayFinder AI. Bạn có thể hỏi mình tìm chỗ ở Đà Nẵng theo khu vực, tiện nghi, loại hình hoặc khoảng cách tới biển, sân bay, Cầu Rồng, chợ Hàn.";
+    if (!hasStayRecommendationIntent(queryText, intent)) {
+      return buildConversationalReply("greeting", queryText).answer;
     }
-    return "Mình chưa tìm được chỗ thật sự phù hợp với tiêu chí này. Bạn thử nới khoảng cách, giảm bớt tiện ích bắt buộc, hoặc đổi sang một mốc gần như Cầu Rồng, Mỹ Khê hay sân bay nhé.";
+    return [
+      "Mình chưa tìm thấy chỗ nào khớp đủ tiêu chí này trong dữ liệu hiện có. 🙏",
+      "Bạn thử nới một chút nhé — ví dụ bỏ bớt một tiện ích bắt buộc, mở rộng khu vực, hoặc đổi sang mốc gần như Cầu Rồng, biển Mỹ Khê hay sân bay.",
+    ].join("\n\n");
   }
 
-  const lines = [
-    `Mình tìm được ${recommendedPlaces.length} lựa chọn khá sát với nhu cầu của bạn.`,
-  ];
+  const topPlaces = recommendedPlaces.slice(0, 3);
+  const needPhrase = buildNeedPhrase(intent);
+  const sections = [];
 
-  for (const place of recommendedPlaces.slice(0, 3)) {
-    const landmark = place.matched_landmark || place.nearest_landmarks?.[0];
-    const amenityPreview = (place.amenities_preview || []).slice(0, 3).join(", ");
-    let line = `${place.title || place.place_id}`;
-    if (place.rating !== null) {
-      line += ` có điểm ${place.rating.toFixed(1)}/5`;
-    }
-    if (landmark?.distance_m !== undefined && landmark?.distance_m !== null) {
-      line += `, gần ${landmark.landmark_name} khoảng ${formatDistance(landmark.distance_m)} theo đường chim bay`;
-    }
-    if (amenityPreview) {
-      line += `, có các tiện ích như ${amenityPreview}`;
-    }
-    lines.push(line + ".");
-  }
-
-  if (queryResult.semantic_error) {
-    lines.push("Mình đang ưu tiên các thông tin đã được xác thực trên hồ sơ địa điểm.");
+  if (needPhrase) {
+    sections.push(
+      topPlaces.length === 1
+        ? `Mình tìm được 1 lựa chọn phù hợp với yêu cầu ${needPhrase}:`
+        : `Mình tìm được ${topPlaces.length} lựa chọn phù hợp với yêu cầu ${needPhrase}:`,
+    );
   } else {
-    lines.push("Nếu bạn muốn, mình có thể tiếp tục thu hẹp theo khu vực, loại hình, hoặc mốc gần như Cầu Rồng, Mỹ Khê hay sân bay.");
+    sections.push(
+      topPlaces.length === 1
+        ? `Mình tìm được 1 lựa chọn phù hợp cho bạn:`
+        : `Mình tìm được ${topPlaces.length} lựa chọn phù hợp cho bạn:`,
+    );
   }
 
-  return lines.join(" ");
+  sections.push(topPlaces.map((place) => buildPlaceBlock(place, intent)).join("\n\n"));
+
+  const caveats = buildCaveatBullets(queryText, recommendedPlaces);
+  if (caveats.length) {
+    sections.push(["Điểm cần lưu ý:", ...caveats.map((item) => `• ${item}`)].join("\n"));
+  }
+
+  return sections.join("\n\n");
 }
 
 function buildFollowUpPrompts(intent, recommendedPlaces) {
-  const prompts = [];
-  const topPlace = recommendedPlaces[0];
-  const topLandmark =
-    topPlace?.matched_landmark?.landmark_name || topPlace?.nearest_landmarks?.[0]?.landmark_name;
+  if (recommendedPlaces.length) {
+    return [];
+  }
 
-  if (intent.landmark_slugs?.length) {
-    prompts.push("So sánh 3 chỗ phù hợp nhất theo cùng landmark này");
+  const landmarkSlugs = intent.landmark_slugs || [];
+  const zoneSlugs = intent.zone_slugs || [];
+  const amenityKeys = (intent.amenity_labels || []).map(normalizeVietnamese);
+  const hasBeach =
+    landmarkSlugs.includes("east-sea-park") ||
+    zoneSlugs.includes("my-khe-strip") ||
+    /bien|beach/.test(normalizeVietnamese(intent.normalized_query || ""));
+  const hasPet = amenityKeys.some((key) => key.includes("vat nuoi") || key.includes("thu cung"));
+
+  const prompts = [];
+  if (hasPet && hasBeach) {
+    prompts.push("🐶 Chỗ cho thú cưng gần biển nhất");
+  } else if (hasPet) {
+    prompts.push("🐶 Chỗ cho thú cưng đánh giá cao");
   }
-  if (intent.amenity_labels?.length) {
-    prompts.push("Giữ nguyên khu vực nhưng nới bớt yêu cầu tiện ích");
+  if (hasBeach) {
+    prompts.push("🏖️ Chỗ gần Công viên Biển Đông nhất");
   }
-  if (topLandmark) {
-    prompts.push(`Chỗ nào gần ${topLandmark} nhất theo đường chim bay?`);
+  prompts.push("👨‍👩‍👧‍👦 Chỗ hợp gia đình, đánh giá cao");
+  prompts.push("💰 Chỗ giá tốt trong khu vực");
+  if (recommendedPlaces.length) {
+    prompts.push("🏊 Chỗ có hồ bơi");
   }
-  prompts.push("Gợi ý lựa chọn phù hợp cho gia đình");
-  prompts.push("Gợi ý lựa chọn giá ổn và nhiều review");
 
   return uniqueStrings(prompts).slice(0, 4);
+}
+
+const QUICK_INTENT_REPLIES = {
+  greeting: {
+    answer: [
+      "Xin chào 👋",
+      "Mình là StayFinder AI, có thể giúp bạn tìm chỗ ở tại Đà Nẵng:",
+      ["• Khách sạn gần biển", "• Homestay cho gia đình", "• Chỗ ở gần sân bay", "• Resort có hồ bơi"].join("\n"),
+      "Bạn đang tìm loại hình nào?",
+    ].join("\n\n"),
+    prompts: [
+      "🏖️ Khách sạn gần biển",
+      "👨‍👩‍👧‍👦 Homestay cho gia đình",
+      "✈️ Chỗ ở gần sân bay",
+      "🏊 Resort có hồ bơi",
+    ],
+  },
+  thanks: {
+    answer: "Rất vui được giúp bạn! 😊 Khi cần tìm thêm chỗ ở nào ở Đà Nẵng, bạn cứ nhắn mình nhé.",
+    prompts: [
+      "🏖️ Khách sạn gần biển",
+      "👨‍👩‍👧‍👦 Homestay cho gia đình",
+      "🏊 Resort có hồ bơi",
+    ],
+  },
+  capability: {
+    answer: [
+      "Mình là StayFinder AI 🤖 — trợ lý tìm chỗ ở tại Đà Nẵng.",
+      "Bạn có thể hỏi mình theo nhu cầu thực tế, ví dụ:",
+      ["• \"Khách sạn gần biển cho gia đình\"", "• \"Homestay yên tĩnh gần An Thượng\"", "• \"Chỗ ở gần sân bay, có chỗ đỗ xe\""].join("\n"),
+      "Mình sẽ gợi ý và giải thích vì sao chỗ đó phù hợp.",
+    ].join("\n\n"),
+    prompts: [
+      "🏖️ Khách sạn gần biển",
+      "👨‍👩‍👧‍👦 Homestay cho gia đình",
+      "✈️ Chỗ ở gần sân bay",
+    ],
+  },
+  smalltalk: {
+    answer: "Mình ở đây để giúp bạn tìm chỗ ở tại Đà Nẵng 🙂 Bạn muốn tìm chỗ gần biển, gần trung tâm hay gần sân bay?",
+    prompts: [
+      "🏖️ Khách sạn gần biển",
+      "🌉 Chỗ ở gần trung tâm",
+      "✈️ Chỗ ở gần sân bay",
+    ],
+  },
+};
+
+function detectQuickIntent(queryText) {
+  const normalized = normalizeVietnamese(queryText).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return null;
+  }
+  const words = normalized.split(" ");
+
+  if (/(^|\s)(cam on|thank|thanks|thank you|tks|ty)(\s|$)/.test(normalized)) {
+    return "thanks";
+  }
+  if (
+    /(ban la ai|ban ten gi|ban lam duoc gi|ban giup duoc gi|giup duoc gi|lam duoc nhung gi|what can you do|who are you|how can you help)/.test(
+      normalized,
+    )
+  ) {
+    return "capability";
+  }
+  if (
+    words.length <= 4 &&
+    /(^|\s)(hi|hii|hey|helo|hello|hallo|halo|chao|xin chao|alo|a lo|yo|good morning|good evening|good afternoon)(\s|$)/.test(
+      normalized,
+    )
+  ) {
+    return "greeting";
+  }
+  if (words.length <= 3 && /(^|\s)(ok|oke|okay|okie|uh|um|umm|hmm|vang|u|uhm|yes|no|haha|hihi)(\s|$)/.test(normalized)) {
+    return "smalltalk";
+  }
+  return null;
+}
+
+function buildConversationalReply(intentKind, queryText) {
+  const template = QUICK_INTENT_REPLIES[intentKind] || QUICK_INTENT_REPLIES.greeting;
+  return {
+    answer: template.answer,
+    applied_filters: formatAppliedFilters({}),
+    recommended_places: [],
+    local_context_used: [],
+    follow_up_prompts: template.prompts.slice(0, 4),
+    meta: {
+      query: queryText,
+      should_recommend_places: false,
+      conversation_intent: intentKind,
+      semantic_error: null,
+      semantic_matches: [],
+    },
+  };
 }
 
 function formatAppliedFilters(intent) {
@@ -1055,6 +1421,13 @@ async function runChatQuery(payload) {
   const queryText = String(payload.query || "").trim();
   if (!queryText) {
     throw badRequest("query is required.");
+  }
+
+  if (!hasStayRecommendationIntent(queryText, {})) {
+    const quickIntent = detectQuickIntent(queryText);
+    if (quickIntent) {
+      return buildConversationalReply(quickIntent, queryText);
+    }
   }
 
   const generate = parseBoolean(payload.generate, config.chatGenerateDefault);
@@ -1167,6 +1540,20 @@ async function getCachedReviewSummary(identifier) {
   };
 }
 
+function isFallbackReviewSummary(summary) {
+  if (!summary) {
+    return false;
+  }
+
+  const model = String(summary.model || "").toLowerCase();
+  const strategy = String(summary.metadata?.strategy || "").toLowerCase();
+  return (
+    model === "heuristic-fallback" ||
+    strategy === "fallback" ||
+    strategy.startsWith("fallback-after-llm-error")
+  );
+}
+
 async function getOrGenerateReviewSummary(payload) {
   const identifier = String(payload.placeId || payload.place_id || payload.id || "").trim();
   const titleSearch = String(payload.titleSearch || "").trim();
@@ -1179,14 +1566,23 @@ async function getOrGenerateReviewSummary(payload) {
 
   if (identifier && !refresh) {
     const cached = await getCachedReviewSummary(identifier);
-    if (cached) {
+    if (cached && !(useLlm && isFallbackReviewSummary(cached))) {
       return cached;
     }
   }
 
-  const args = ["review-summary"];
+  let canonicalPlaceId = identifier;
   if (identifier) {
-    args.push("--place-id", identifier);
+    const place = await findPlaceByIdentifier(identifier);
+    if (!place) {
+      throw notFound("Không tìm thấy địa điểm này trong database hiện tại để tạo tóm tắt AI.");
+    }
+    canonicalPlaceId = place.place_id;
+  }
+
+  const args = ["review-summary"];
+  if (canonicalPlaceId) {
+    args.push("--place-id", canonicalPlaceId);
   } else if (titleSearch) {
     args.push("--title-search", titleSearch);
   }
@@ -1432,7 +1828,10 @@ async function listAdminLandmarks() {
      FROM local_landmarks
      ORDER BY slug ASC`,
   );
-  return result.rows;
+  return result.rows.map((row) => ({
+    ...row,
+    name: normalizeLandmarkDisplayName(row.name),
+  }));
 }
 
 async function getAdminLandmark(identifier) {
@@ -1446,7 +1845,10 @@ async function getAdminLandmark(identifier) {
   if (!result.rows[0]) {
     throw notFound("Landmark not found.");
   }
-  return result.rows[0];
+  return {
+    ...result.rows[0],
+    name: normalizeLandmarkDisplayName(result.rows[0].name),
+  };
 }
 
 async function createLandmark(payload) {

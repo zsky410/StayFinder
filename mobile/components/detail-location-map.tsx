@@ -2,16 +2,26 @@ import { Feather } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, PanResponder, Pressable, Text, View } from "react-native";
 
+export type DetailLocationMapLandmark = {
+  key: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  distanceLabel?: string;
+};
+
 type DetailLocationMapProps = {
   latitude: number | null | undefined;
   longitude: number | null | undefined;
   title?: string | null;
+  landmarks?: DetailLocationMapLandmark[];
 };
 
 const MAP_TILE_ZOOM = 15;
 const MIN_MAP_TILE_ZOOM = 13;
 const MAX_MAP_TILE_ZOOM = 18;
 const TILE_GRID_RADIUS = 1;
+const MAP_LANDMARK_LIMIT = 5;
 const PINCH_ZOOM_IN_THRESHOLD = 1.12;
 const PINCH_ZOOM_OUT_THRESHOLD = 0.88;
 
@@ -26,13 +36,13 @@ const TILE_PROVIDERS: TileProvider[] = [
     name: "carto-voyager",
     attribution: "© OpenStreetMap, © CARTO",
     buildUrl: (zoom, x, y) =>
-      `https://basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${x}/${y}@2x.png`,
+      `https://basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${x}/${y}.png`,
   },
   {
     name: "carto-positron",
     attribution: "© OpenStreetMap, © CARTO",
     buildUrl: (zoom, x, y) =>
-      `https://basemaps.cartocdn.com/light_all/${zoom}/${x}/${y}@2x.png`,
+      `https://basemaps.cartocdn.com/light_all/${zoom}/${x}/${y}.png`,
   },
   {
     name: "arcgis-street",
@@ -112,6 +122,30 @@ function buildTileGrid(latitude: number, longitude: number, zoom: number): TileG
   };
 }
 
+function buildMarkerPosition(
+  centerLatitude: number,
+  centerLongitude: number,
+  latitude: number,
+  longitude: number,
+  zoom: number,
+) {
+  const center = projectToTilePoint(centerLatitude, centerLongitude, zoom);
+  const point = projectToTilePoint(latitude, longitude, zoom);
+  const visibleTileSpan = TILE_GRID_RADIUS * 2 + 1;
+  const leftPercent = ((point.x - (center.x - visibleTileSpan / 2)) / visibleTileSpan) * 100;
+  const topPercent = ((point.y - (center.y - visibleTileSpan / 2)) / visibleTileSpan) * 100;
+
+  return {
+    leftPercent,
+    topPercent,
+    isVisible:
+      leftPercent >= -6 &&
+      leftPercent <= 106 &&
+      topPercent >= -6 &&
+      topPercent <= 106,
+  };
+}
+
 function getTouchDistance(touches: readonly { pageX: number; pageY: number }[]) {
   if (touches.length < 2) {
     return null;
@@ -128,6 +162,7 @@ export function DetailLocationMap({
   latitude,
   longitude,
   title,
+  landmarks = [],
 }: DetailLocationMapProps) {
   const hasCoordinates =
     typeof latitude === "number" &&
@@ -155,6 +190,32 @@ export function DetailLocationMap({
 
     return buildTileGrid(latitude as number, longitude as number, zoom);
   }, [hasCoordinates, latitude, longitude, zoom]);
+
+  const landmarkMarkers = useMemo(() => {
+    if (!hasCoordinates) {
+      return [];
+    }
+
+    return landmarks
+      .filter(
+        (landmark) =>
+          Number.isFinite(landmark.latitude) &&
+          Number.isFinite(landmark.longitude) &&
+          (landmark.latitude !== latitude || landmark.longitude !== longitude),
+      )
+      .slice(0, MAP_LANDMARK_LIMIT)
+      .map((landmark) => ({
+        ...landmark,
+        ...buildMarkerPosition(
+          latitude as number,
+          longitude as number,
+          landmark.latitude,
+          landmark.longitude,
+          zoom,
+        ),
+      }))
+      .filter((landmark) => landmark.isVisible);
+  }, [hasCoordinates, landmarks, latitude, longitude, zoom]);
 
   const [providerIndex, setProviderIndex] = useState(0);
   const [failedTileCount, setFailedTileCount] = useState(0);
@@ -281,6 +342,7 @@ export function DetailLocationMap({
       >
         {tileGrid?.tiles.map((tile) => (
           <Image
+            fadeDuration={120}
             key={`${provider.name}-${tile.key}`}
             onError={() => setFailedTileCount((current) => current + 1)}
             onLoad={() => setLoadedTileCount((current) => current + 1)}
@@ -365,6 +427,69 @@ export function DetailLocationMap({
           top: 0,
         }}
       >
+        {landmarkMarkers.map((landmark, index) => {
+          const labelLeftPercent = Math.max(18, Math.min(82, landmark.leftPercent));
+          const labelTopPercent = Math.max(8, Math.min(82, landmark.topPercent + 5));
+
+          return (
+            <View
+              key={landmark.key}
+              style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+            >
+              <View
+                style={{
+                  alignItems: "center",
+                  backgroundColor: "#FFFFFF",
+                  borderColor: "#F59E0B",
+                  borderRadius: 999,
+                  borderWidth: 2,
+                  height: 14,
+                  justifyContent: "center",
+                  left: `${landmark.leftPercent}%`,
+                  position: "absolute",
+                  top: `${landmark.topPercent}%`,
+                  transform: [{ translateX: -7 }, { translateY: -7 }],
+                  width: 14,
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: "#F59E0B",
+                    borderRadius: 999,
+                    height: 6,
+                    width: 6,
+                  }}
+                />
+              </View>
+              {index < 3 ? (
+                <View
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: "rgba(255,255,255,0.94)",
+                    borderColor: "rgba(245, 158, 11, 0.28)",
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    flexDirection: "row",
+                    gap: 3,
+                    left: `${labelLeftPercent}%`,
+                    maxWidth: 132,
+                    paddingHorizontal: 7,
+                    paddingVertical: 4,
+                    position: "absolute",
+                    top: `${labelTopPercent}%`,
+                    transform: [{ translateX: -58 }],
+                  }}
+                >
+                  <Feather color="#B45309" name="map-pin" size={9} />
+                  <Text numberOfLines={1} style={{ color: "#17233F", flexShrink: 1, fontSize: 9, fontWeight: "700" }}>
+                    {landmark.distanceLabel ? `${landmark.name} • ${landmark.distanceLabel}` : landmark.name}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+
         <View
           style={{
             backgroundColor: "rgba(43, 88, 232, 0.18)",

@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/brand-header";
-import { SafeImage } from "@/components/safe-image";
+import { CardPreviewImage } from "@/components/card-preview-image";
 import { theme } from "@/constants/theme";
 import { useSavedPlaces } from "@/lib/saved-places";
 import {
@@ -29,14 +29,8 @@ import {
   formatLocation,
   formatRating,
   formatReviewCount,
-  getImageSource,
 } from "@/lib/stayfinder-ui";
 
-const resultFallbackImages = [
-  require("../../assets/results/ocean-villa.jpg"),
-  require("../../assets/results/sunrise-boutique.jpg"),
-  require("../../assets/results/coral-studio.jpg"),
-] as const;
 const RESULT_PAGE_SIZE = 50;
 
 type SortOption = "rating_desc" | "reviews_desc" | "distance_asc" | "title_asc";
@@ -163,12 +157,10 @@ function AmenityRow({
 
 function ResultCard({
   item,
-  fallbackImage,
   isSaved,
   onToggleSaved,
 }: {
   item: PlaceSummary;
-  fallbackImage: typeof resultFallbackImages[number];
   isSaved: boolean;
   onToggleSaved: () => void;
 }) {
@@ -200,9 +192,8 @@ function ResultCard({
         }}
       >
         <View>
-          <SafeImage
-            fallbackSource={fallbackImage}
-            source={getImageSource(item.cover_image, fallbackImage)}
+          <CardPreviewImage
+            source={item.cover_image ? { uri: item.cover_image } : null}
             style={{ height: 138, width: "100%" }}
           />
 
@@ -818,9 +809,6 @@ export default function ResultsRoute() {
                 {row.map((item, itemIndex) => (
                   <View key={item.id} style={{ width: "48.2%" }}>
                     <ResultCard
-                      fallbackImage={
-                        resultFallbackImages[(rowIndex * 2 + itemIndex) % resultFallbackImages.length]
-                      }
                       item={item}
                       isSaved={isSaved(item.place_id)}
                       onToggleSaved={() => toggleSavedFromSummary(item)}

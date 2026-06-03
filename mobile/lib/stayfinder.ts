@@ -4,8 +4,17 @@ export type LandmarkMetric = {
   landmark_slug: string;
   landmark_name: string;
   distance_m: number | null;
+  display_distance_m?: number | null;
+  straight_line_distance_m?: number | null;
+  walking_distance_m?: number | null;
+  walking_duration_s?: number | null;
+  driving_distance_m?: number | null;
+  driving_duration_s?: number | null;
+  distance_source?: "walking" | "driving" | "straight_line" | string | null;
   method: string | null;
   anchor_label: string | null;
+  anchor_lat?: number | null;
+  anchor_lng?: number | null;
 };
 
 export type PlaceSummary = {
@@ -81,6 +90,7 @@ export type ChatQueryResponse = {
   meta: {
     query: string;
     should_recommend_places?: boolean;
+    conversation_intent?: string;
     semantic_error: string | null;
     semantic_matches: unknown[];
   };
@@ -112,6 +122,9 @@ export type PlaceDetail = {
   gallery: string[];
   phone: string | null;
   website: string | null;
+  source_url: string | null;
+  search_page_url: string | null;
+  hotel_ads: Array<Record<string, unknown>>;
   opening_hours: Record<string, unknown> | null;
   additional_info: Record<string, unknown> | null;
   price_text: string | null;
@@ -195,27 +208,41 @@ function buildHttpBaseUrl(host: string, port: string) {
 }
 
 function resolveApiBaseUrl() {
-  const explicitBaseUrl = String(process.env.EXPO_PUBLIC_API_BASE_URL || "").trim();
-  if (explicitBaseUrl) {
-    return normalizeBaseUrl(explicitBaseUrl);
-  }
-
   const constants = Constants as ExpoConstantsWithHost;
-  const manifestBaseUrl = String(constants.expoConfig?.extra?.apiBaseUrl ?? "").trim();
-  if (manifestBaseUrl) {
-    return normalizeBaseUrl(manifestBaseUrl);
-  }
-
   const apiPort =
     String(process.env.EXPO_PUBLIC_API_PORT || "").trim() ||
     String(constants.expoConfig?.extra?.apiPort ?? "").trim() ||
     "3000";
+  const explicitBaseUrl = String(process.env.EXPO_PUBLIC_API_BASE_URL || "").trim();
+  const explicitHost = extractHost(explicitBaseUrl);
+  if (explicitBaseUrl && (explicitHost === "127.0.0.1" || explicitHost === "localhost")) {
+    return normalizeBaseUrl(explicitBaseUrl);
+  }
+
   const candidateHosts = [
     constants.expoConfig?.hostUri,
     constants.manifest2?.extra?.expoClient?.hostUri,
     constants.linkingUri,
     constants.manifest?.debuggerHost,
   ];
+
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    for (const candidate of candidateHosts) {
+      const detectedHost = extractHost(candidate);
+      if (detectedHost && detectedHost !== "127.0.0.1" && detectedHost !== "localhost") {
+        return buildHttpBaseUrl(detectedHost, apiPort);
+      }
+    }
+  }
+
+  if (explicitBaseUrl) {
+    return normalizeBaseUrl(explicitBaseUrl);
+  }
+
+  const manifestBaseUrl = String(constants.expoConfig?.extra?.apiBaseUrl ?? "").trim();
+  if (manifestBaseUrl) {
+    return normalizeBaseUrl(manifestBaseUrl);
+  }
 
   for (const candidate of candidateHosts) {
     const detectedHost = extractHost(candidate);
