@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CardPreviewImage } from "@/components/card-preview-image";
 import { theme } from "@/constants/theme";
-import { fetchChatQuery, stayfinderApiBaseUrl, type PlaceSummary } from "@/lib/stayfinder";
+import { fetchChatQuery, type PlaceSummary } from "@/lib/stayfinder";
 import { formatPriceText, formatRating } from "@/lib/stayfinder-ui";
 const headerTitle = "StayFinder AI";
 const statusText = "Đang hoạt động";
@@ -140,10 +140,7 @@ export default function ChatTabRoute() {
         {
           id: `assistant-error-${Date.now()}`,
           role: "assistant",
-          text:
-            error instanceof Error
-              ? `Mình chưa gọi được AI chat: ${error.message}\nAPI: ${stayfinderApiBaseUrl}`
-              : "Mình chưa gọi được AI chat. Bạn thử lại sau nhé.",
+          text: "Mình chưa kết nối được để trả lời ngay lúc này. Bạn thử lại sau nhé.",
         },
       ]);
     } finally {
