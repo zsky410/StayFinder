@@ -144,14 +144,14 @@ $$;
 
 INSERT INTO local_landmarks (slug, name, kind, lat, lng, metadata)
 VALUES
-    ('dragon-bridge', 'Dragon Bridge (Cầu Rồng)', 'point', 16.0615, 108.2278, '{"area":"Hải Châu","phase":"phase1","placeholder":true}'::jsonb),
-    ('han-bridge', 'Han River Bridge (Cầu Sông Hàn)', 'point', 16.0719, 108.2244, '{"area":"Hải Châu","phase":"phase1","placeholder":true}'::jsonb),
-    ('my-khe-beach', 'My Khe Beach (Bãi biển Mỹ Khê)', 'point', 16.0564, 108.2474, '{"area":"Sơn Trà / Ngũ Hành Sơn","phase":"phase1","placeholder":true,"anchorLabel":"My Khe representative point"}'::jsonb),
-    ('da-nang-airport', 'Da Nang International Airport (DAD)', 'point', 16.0439, 108.1995, '{"iata":"DAD","phase":"phase1","placeholder":true}'::jsonb),
-    ('han-market', 'Han Market (Chợ Hàn)', 'point', 16.0678, 108.2221, '{"area":"Hải Châu","phase":"phase1","placeholder":true}'::jsonb),
-    ('son-tra-peninsula', 'Son Tra Peninsula (Bán đảo Sơn Trà)', 'point', 16.1199, 108.2519, '{"area":"Sơn Trà","phase":"phase1","placeholder":true,"anchorLabel":"Son Tra representative point","note":"Representative point only; refine later with real anchors"}'::jsonb),
-    ('an-thuong', 'An Thuong (An Thượng)', 'point', 16.0504, 108.2467, '{"area":"Ngũ Hành Sơn","phase":"phase1","placeholder":true,"anchorLabel":"An Thuong representative point"}'::jsonb),
-    ('marble-mountains', 'Marble Mountains (Ngũ Hành Sơn)', 'point', 16.0037, 108.2641, '{"area":"Ngũ Hành Sơn","phase":"phase1","placeholder":true}'::jsonb)
+    ('dragon-bridge', 'Cầu Rồng', 'point', 16.0615, 108.2278, '{"area":"Hải Châu","phase":"phase1","placeholder":true}'::jsonb),
+    ('han-bridge', 'Cầu Sông Hàn', 'point', 16.0719, 108.2244, '{"area":"Hải Châu","phase":"phase1","placeholder":true}'::jsonb),
+    ('my-khe-beach', 'Bãi biển Mỹ Khê', 'point', 16.0564, 108.2474, '{"area":"Sơn Trà / Ngũ Hành Sơn","phase":"phase1","placeholder":true,"anchorLabel":"Bãi biển Mỹ Khê"}'::jsonb),
+    ('da-nang-airport', 'Sân bay Đà Nẵng', 'point', 16.0439, 108.1995, '{"iata":"DAD","phase":"phase1","placeholder":true}'::jsonb),
+    ('han-market', 'Chợ Hàn', 'point', 16.0678, 108.2221, '{"area":"Hải Châu","phase":"phase1","placeholder":true}'::jsonb),
+    ('son-tra-peninsula', 'Bán đảo Sơn Trà', 'point', 16.1199, 108.2519, '{"area":"Sơn Trà","phase":"phase1","placeholder":true,"anchorLabel":"Bán đảo Sơn Trà","note":"Representative point only; refine later with real anchors"}'::jsonb),
+    ('an-thuong', 'An Thượng', 'point', 16.0504, 108.2467, '{"area":"Ngũ Hành Sơn","phase":"phase1","placeholder":true,"anchorLabel":"An Thượng"}'::jsonb),
+    ('marble-mountains', 'Ngũ Hành Sơn', 'point', 16.0037, 108.2641, '{"area":"Ngũ Hành Sơn","phase":"phase1","placeholder":true}'::jsonb)
 ON CONFLICT (slug) DO UPDATE SET
     name = EXCLUDED.name,
     kind = EXCLUDED.kind,
@@ -161,11 +161,11 @@ ON CONFLICT (slug) DO UPDATE SET
 
 INSERT INTO local_zones (slug, name, description, geom, metadata)
 VALUES
-    ('hai-chau-center', 'Hai Chau Center', 'Placeholder zone for central Da Nang around Han River and civic core.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb),
-    ('my-khe-strip', 'My Khe Beach Strip', 'Placeholder beachfront zone for stays marketed as close to My Khe.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb),
-    ('an-thuong-zone', 'An Thuong Area', 'Placeholder zone for the An Thuong expat and cafe area.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb),
-    ('son-tra-south', 'South Son Tra', 'Placeholder zone for coastal Son Tra stays with beach access.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb),
-    ('airport-corridor', 'Airport Corridor', 'Placeholder zone for quick-access stays near Da Nang airport.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb)
+    ('hai-chau-center', 'Trung tâm Hải Châu', 'Placeholder zone for central Da Nang around Han River and civic core.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb),
+    ('my-khe-strip', 'Dải biển Mỹ Khê', 'Placeholder beachfront zone for stays marketed as close to My Khe.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb),
+    ('an-thuong-zone', 'Khu An Thượng', 'Placeholder zone for the An Thuong expat and cafe area.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb),
+    ('son-tra-south', 'Khu Sơn Trà', 'Placeholder zone for coastal Son Tra stays with beach access.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb),
+    ('airport-corridor', 'Khu vực sân bay Đà Nẵng', 'Placeholder zone for quick-access stays near Da Nang airport.', NULL, '{"phase":"phase1","placeholder":true}'::jsonb)
 ON CONFLICT (slug) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,

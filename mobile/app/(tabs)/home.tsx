@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ImageBackground,
-  type ImageSourcePropType,
   Pressable,
   ScrollView,
   Text,
@@ -17,28 +16,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/brand-header";
-import { SafeImage } from "@/components/safe-image";
+import { CardPreviewImage } from "@/components/card-preview-image";
 import { theme } from "@/constants/theme";
 import { fetchPlaces, stayfinderApiBaseUrl, type PlaceSummary } from "@/lib/stayfinder";
-import {
-  buildDistanceLabel,
-  formatLocation,
-  formatPriceText,
-  formatRating,
-  getImageSource,
-} from "@/lib/stayfinder-ui";
+import { buildDistanceLabel, formatLocation, formatPriceText, formatRating } from "@/lib/stayfinder-ui";
 
 const heroImage = require("../../assets/home/hero.jpg");
-const featuredFallbackImages = [
-  require("../../assets/home/featured-beach.jpg"),
-  require("../../assets/home/featured-villa.jpg"),
-] as const;
-const nearbyFallbackImages = [
-  require("../../assets/home/nearby-hotel.jpg"),
-  require("../../assets/home/nearby-homestay.jpg"),
-  require("../../assets/home/featured-beach.jpg"),
-] as const;
-const liveSearchFallbackImage = require("../../assets/results/coral-studio.jpg");
 const LIVE_SEARCH_MIN_QUERY_LENGTH = 2;
 const LIVE_SEARCH_LIMIT = 5;
 const LIVE_SEARCH_DEBOUNCE_MS = 140;
@@ -205,9 +188,8 @@ function LiveSearchItem({
         paddingVertical: 12,
       })}
     >
-      <SafeImage
-        fallbackSource={liveSearchFallbackImage}
-        source={getImageSource(place.cover_image, liveSearchFallbackImage)}
+      <CardPreviewImage
+        source={place.cover_image ? { uri: place.cover_image } : null}
         style={{
           borderRadius: 12,
           height: 62,
@@ -289,11 +271,9 @@ function QuickFilterChip({
 function FeaturedCard({
   width,
   place,
-  fallbackImage,
 }: {
   width: number;
   place: PlaceSummary;
-  fallbackImage: ImageSourcePropType;
 }) {
   return (
     <Pressable
@@ -322,9 +302,8 @@ function FeaturedCard({
       >
         <View style={{ borderRadius: 22, borderCurve: "continuous", overflow: "hidden" }}>
           <View>
-            <SafeImage
-              fallbackSource={fallbackImage}
-              source={getImageSource(place.cover_image, fallbackImage)}
+            <CardPreviewImage
+              source={place.cover_image ? { uri: place.cover_image } : null}
               style={{ height: 186, width: "100%" }}
             />
             <View
@@ -386,10 +365,8 @@ function FeaturedCard({
 
 function NearbyCard({
   place,
-  fallbackImage,
 }: {
   place: PlaceSummary;
-  fallbackImage: ImageSourcePropType;
 }) {
   return (
     <Pressable
@@ -411,9 +388,8 @@ function NearbyCard({
         boxShadow: "0 12px 28px rgba(20, 27, 52, 0.08)",
       })}
     >
-      <SafeImage
-        fallbackSource={fallbackImage}
-        source={getImageSource(place.cover_image, fallbackImage)}
+      <CardPreviewImage
+        source={place.cover_image ? { uri: place.cover_image } : null}
         style={{
           borderRadius: 14,
           height: 104,
@@ -994,8 +970,7 @@ export default function HomeTabRoute() {
               showsHorizontalScrollIndicator={false}
             >
               {featuredPlaces.map((place, index) => (
-                <FeaturedCard
-                  fallbackImage={featuredFallbackImages[index % featuredFallbackImages.length]}
+              <FeaturedCard
                   key={place.id}
                   place={place}
                   width={featuredCardWidth}
@@ -1013,7 +988,6 @@ export default function HomeTabRoute() {
             <View style={{ gap: 16 }}>
               {nearbyPlaces.map((place, index) => (
                 <NearbyCard
-                  fallbackImage={nearbyFallbackImages[index % nearbyFallbackImages.length]}
                   key={place.id}
                   place={place}
                 />

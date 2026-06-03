@@ -40,6 +40,36 @@ export function formatDistanceMeters(distanceM: number | null | undefined) {
   return `${Math.round(distanceM)}m`;
 }
 
+export function getMetricDisplayDistance(metric: LandmarkMetric | null | undefined) {
+  if (!metric) {
+    return null;
+  }
+
+  if (typeof metric.display_distance_m === "number") {
+    return metric.display_distance_m;
+  }
+
+  return metric.distance_m;
+}
+
+export function formatLandmarkMetricDistance(metric: LandmarkMetric | null | undefined) {
+  const distanceLabel = formatDistanceMeters(getMetricDisplayDistance(metric));
+
+  if (!metric || distanceLabel === "Chưa có khoảng cách") {
+    return distanceLabel;
+  }
+
+  if (metric.distance_source === "walking") {
+    return `${distanceLabel} đường đi`;
+  }
+
+  if (metric.distance_source === "driving") {
+    return `${distanceLabel} đi xe`;
+  }
+
+  return `${distanceLabel} ước tính`;
+}
+
 export function formatLocation(place: Pick<PlaceSummary, "neighborhood" | "district" | "address">) {
   const parts = [place.neighborhood, place.district].filter(Boolean);
   if (parts.length) {
@@ -92,7 +122,7 @@ export function getNearestLandmark(metrics: LandmarkMetric[] | null | undefined)
     return null;
   }
 
-  return metrics.find((metric) => typeof metric.distance_m === "number") || metrics[0] || null;
+  return metrics.find((metric) => typeof getMetricDisplayDistance(metric) === "number") || metrics[0] || null;
 }
 
 export function buildDistanceLabel(place: Pick<PlaceSummary, "nearest_landmarks" | "requested_landmark_distance_m">) {
@@ -105,7 +135,7 @@ export function buildDistanceLabel(place: Pick<PlaceSummary, "nearest_landmarks"
     return "Xem vị trí chi tiết";
   }
 
-  return `Gần ${nearest.landmark_name} ${formatDistanceMeters(nearest.distance_m)}`;
+  return `Gần ${nearest.landmark_name} ${formatLandmarkMetricDistance(nearest)}`;
 }
 
 export function derivePlaceTags(

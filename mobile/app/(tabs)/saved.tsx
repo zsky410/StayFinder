@@ -6,14 +6,13 @@ import { Animated, PanResponder, Pressable, ScrollView, Text, View } from "react
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/brand-header";
-import { SafeImage } from "@/components/safe-image";
+import { CardPreviewImage } from "@/components/card-preview-image";
 import { theme } from "@/constants/theme";
 import { useSavedPlaces, type SavedPlaceRecord } from "@/lib/saved-places";
-import { formatPriceText, formatRating, getImageSource } from "@/lib/stayfinder-ui";
+import { formatPriceText, formatRating } from "@/lib/stayfinder-ui";
 
 const DELETE_ACTION_WIDTH = 132;
 const CARD_HEIGHT = 142;
-const savedFallbackImage = require("../../assets/results/detail-hero.jpg");
 
 function SwipeableSavedCard({
   item,
@@ -145,9 +144,8 @@ function SwipeableSavedCard({
           })}
         >
           <View style={{ height: CARD_HEIGHT, position: "relative", width: 126 }}>
-            <SafeImage
-              fallbackSource={savedFallbackImage}
-              source={getImageSource(item.cover_image, savedFallbackImage)}
+            <CardPreviewImage
+              source={item.cover_image ? { uri: item.cover_image } : null}
               style={{
                 height: CARD_HEIGHT,
                 width: 126,

@@ -1,5 +1,6 @@
 import unittest
 from collections import defaultdict
+from unittest import mock
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -123,6 +124,23 @@ class Phase2RagTest(unittest.TestCase):
         self.assertEqual(intent.amenity_labels, ["Wi-Fi miễn phí"])
         self.assertEqual(intent.max_distance_m, 2000)
         self.assertEqual(intent.min_rating, 4.0)
+
+    def test_review_summary_falls_back_when_llm_fails(self):
+        with mock.patch.object(
+            phase2_rag,
+            "generate_llm_review_summary",
+            side_effect=RuntimeError("llm down"),
+        ):
+            payload = phase2_rag.generate_review_summary(
+                sample_place(),
+                model_name="gpt-5.4",
+                use_llm=True,
+            )
+
+        self.assertEqual(payload["model"], "heuristic-fallback")
+        self.assertIn("fallback-after-llm-error", payload["metadata"]["strategy"])
+        self.assertIn("llm down", payload["metadata"]["llm_error"])
+        self.assertTrue(payload["summary_text"])
 
 
 if __name__ == "__main__":
