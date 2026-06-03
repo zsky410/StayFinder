@@ -459,6 +459,23 @@ async function listPlaces(filters, { includeBatchKey = false } = {}) {
               pi.id ASC
             LIMIT 1
           ),
+          (
+            SELECT review_image.image_url
+            FROM reviews r
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE
+                WHEN jsonb_typeof(r.payload -> 'reviewImageUrls') = 'array'
+                  THEN r.payload -> 'reviewImageUrls'
+                ELSE '[]'::jsonb
+              END
+            ) AS review_image(image_url)
+            WHERE r.place_id = p.id
+              AND review_image.image_url NOT ILIKE '%streetviewpixels-pa.googleapis.com%'
+              AND review_image.image_url NOT ILIKE '%/gps-cs-s/%'
+              AND review_image.image_url NOT ILIKE '%/geougc-cs/%'
+            ORDER BY r.likes_count DESC NULLS LAST, r.published_at DESC NULLS LAST
+            LIMIT 1
+          ),
           CASE
             WHEN COALESCE(p.image_url, '') = '' THEN NULL
             WHEN p.image_url ILIKE '%streetviewpixels-pa.googleapis.com%' THEN NULL
@@ -570,7 +587,43 @@ async function getPlaceDetail(identifier) {
         p.url,
         p.search_page_url,
         p.hotel_ads,
-        COALESCE(p.image_url, '') AS cover_image,
+        COALESCE(
+          (
+            SELECT pi.image_url
+            FROM place_images pi
+            WHERE pi.place_id = p.id
+              AND pi.image_url NOT ILIKE '%streetviewpixels-pa.googleapis.com%'
+              AND pi.image_url NOT ILIKE '%/gps-cs-s/%'
+              AND pi.image_url NOT ILIKE '%/geougc-cs/%'
+            ORDER BY
+              CASE
+                WHEN pi.image_url ILIKE '%/p/%' THEN 0
+                ELSE 1
+              END,
+              pi.sort_order ASC,
+              pi.id ASC
+            LIMIT 1
+          ),
+          (
+            SELECT review_image.image_url
+            FROM reviews r
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE
+                WHEN jsonb_typeof(r.payload -> 'reviewImageUrls') = 'array'
+                  THEN r.payload -> 'reviewImageUrls'
+                ELSE '[]'::jsonb
+              END
+            ) AS review_image(image_url)
+            WHERE r.place_id = p.id
+              AND review_image.image_url NOT ILIKE '%streetviewpixels-pa.googleapis.com%'
+              AND review_image.image_url NOT ILIKE '%/gps-cs-s/%'
+              AND review_image.image_url NOT ILIKE '%/geougc-cs/%'
+            ORDER BY r.likes_count DESC NULLS LAST, r.published_at DESC NULLS LAST
+            LIMIT 1
+          ),
+          p.image_url,
+          ''
+        ) AS cover_image,
         COALESCE(
           (
             SELECT json_agg(pi.image_url ORDER BY pi.sort_order ASC, pi.id ASC)
@@ -858,6 +911,23 @@ async function getPlaceSummariesByPlaceIdsWithMetrics(
               END,
               pi.sort_order ASC,
               pi.id ASC
+            LIMIT 1
+          ),
+          (
+            SELECT review_image.image_url
+            FROM reviews r
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE
+                WHEN jsonb_typeof(r.payload -> 'reviewImageUrls') = 'array'
+                  THEN r.payload -> 'reviewImageUrls'
+                ELSE '[]'::jsonb
+              END
+            ) AS review_image(image_url)
+            WHERE r.place_id = p.id
+              AND review_image.image_url NOT ILIKE '%streetviewpixels-pa.googleapis.com%'
+              AND review_image.image_url NOT ILIKE '%/gps-cs-s/%'
+              AND review_image.image_url NOT ILIKE '%/geougc-cs/%'
+            ORDER BY r.likes_count DESC NULLS LAST, r.published_at DESC NULLS LAST
             LIMIT 1
           ),
           p.image_url,

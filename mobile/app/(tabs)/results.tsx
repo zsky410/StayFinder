@@ -19,7 +19,6 @@ import { useSavedPlaces } from "@/lib/saved-places";
 import {
   fetchFiltersMeta,
   fetchPlaces,
-  stayfinderApiBaseUrl,
   type FiltersMeta,
   type PlacesQuery,
   type PlaceSummary,
@@ -410,7 +409,7 @@ export default function ResultsRoute() {
         }
       } catch (error) {
         if (isActive) {
-          setErrorMessage(error instanceof Error ? error.message : "Không tải được meta filter.");
+          setErrorMessage("Chưa tải được bộ lọc lúc này. Bạn thử lại sau nhé.");
         }
       } finally {
         if (isActive) {
@@ -451,7 +450,7 @@ export default function ResultsRoute() {
           return;
         }
 
-        setErrorMessage(error instanceof Error ? error.message : "Không tải được kết quả tìm kiếm.");
+        setErrorMessage("Chưa tải được kết quả tìm kiếm. Bạn thử lại sau nhé.");
       } finally {
         if (isActive) {
           setIsLoading(false);
@@ -484,7 +483,7 @@ export default function ResultsRoute() {
       setTotal(payload.total);
       setCurrentPage(payload.page);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Không tải thêm được kết quả.");
+      setErrorMessage("Chưa tải thêm được kết quả. Bạn thử lại sau nhé.");
     } finally {
       setIsLoadingMore(false);
     }
@@ -760,9 +759,6 @@ export default function ResultsRoute() {
             </Text>
             <Text selectable style={{ color: theme.colors.ink, fontSize: 14, lineHeight: 22 }}>
               {errorMessage}
-            </Text>
-            <Text selectable style={{ color: theme.colors.muted, fontSize: 12, lineHeight: 18 }}>
-              API: {stayfinderApiBaseUrl}
             </Text>
             <Pressable
               onPress={applyFilters}

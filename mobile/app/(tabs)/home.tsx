@@ -1,7 +1,8 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ImageBackground,
@@ -18,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandHeader } from "@/components/brand-header";
 import { CardPreviewImage } from "@/components/card-preview-image";
 import { theme } from "@/constants/theme";
-import { fetchPlaces, stayfinderApiBaseUrl, type PlaceSummary } from "@/lib/stayfinder";
+import { fetchPlaces, type PlaceSummary } from "@/lib/stayfinder";
 import { buildDistanceLabel, formatLocation, formatPriceText, formatRating } from "@/lib/stayfinder-ui";
 
 const heroImage = require("../../assets/home/hero.jpg");
@@ -27,6 +28,11 @@ const LIVE_SEARCH_LIMIT = 5;
 const LIVE_SEARCH_DEBOUNCE_MS = 140;
 const LIVE_SEARCH_CACHE_TTL_MS = 45_000;
 const RECENT_SEARCH_LIMIT = 5;
+const HOME_FEATURED_LIMIT = 6;
+const HOME_SPOTLIGHT_LIMIT = 3;
+const HOME_RANDOM_BUFFER_LIMIT = 18;
+const HOME_SPOTLIGHT_LANDMARK_SLUG = "east-sea-park";
+const HOME_SPOTLIGHT_TITLE = "Gần biển Mỹ Khê";
 
 const quickFilters = [
   {
@@ -48,6 +54,19 @@ const quickFilters = [
 
 function normalizeVietnameseText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function hasReferencePrice(place: PlaceSummary) {
+  const priceText = String(place.price_text || "").trim().toLowerCase();
+  return Boolean(priceText && !["null", "n/a", "na", "none", "unknown"].includes(priceText));
+}
+
+function hasPreviewImage(place: PlaceSummary) {
+  return Boolean(String(place.cover_image || "").trim());
+}
+
+function prioritizeHomePlaces(places: PlaceSummary[], limit: number) {
+  return places.filter((place) => hasPreviewImage(place) && hasReferencePrice(place)).slice(0, limit);
 }
 
 function renderHighlightedText(text: string, query: string) {
@@ -467,7 +486,7 @@ function SectionLoadingCard() {
     >
       <ActivityIndicator color={theme.colors.accent} />
       <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "500" }}>
-        Đang tải dữ liệu thật từ StayFinder...
+        Đang tải gợi ý phù hợp...
       </Text>
     </View>
   );
@@ -489,9 +508,10 @@ export default function HomeTabRoute() {
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [featuredPlaces, setFeaturedPlaces] = useState<PlaceSummary[]>([]);
-  const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
+  const [spotlightPlaces, setSpotlightPlaces] = useState<PlaceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [homeRefreshToken, setHomeRefreshToken] = useState(0);
   const trimmedSearchQuery = searchQuery.trim();
   const shouldShowLiveSearch = trimmedSearchQuery.length >= LIVE_SEARCH_MIN_QUERY_LENGTH;
   const hasLiveSearchResults = searchResults.length > 0;
@@ -511,48 +531,50 @@ export default function HomeTabRoute() {
     };
   }, [searchQuery]);
 
-  useEffect(() => {
-    let isActive = true;
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
 
-    async function loadHomeData() {
-      setIsLoading(true);
-      setErrorMessage(null);
+      async function loadHomeData() {
+        setIsLoading(true);
+        setErrorMessage(null);
 
-      try {
-        const [featuredResponse, nearbyResponse] = await Promise.all([
-          fetchPlaces({ limit: 6, sort: "price_available_desc" }),
-          fetchPlaces({
-            landmarkSlugs: ["dragon-bridge"],
-            limit: 3,
-            sort: "price_available_desc",
-          }),
-        ]);
+        try {
+          const [featuredResponse, spotlightResponse] = await Promise.all([
+            fetchPlaces({ limit: HOME_RANDOM_BUFFER_LIMIT, sort: "random" }),
+            fetchPlaces({
+              landmarkSlugs: [HOME_SPOTLIGHT_LANDMARK_SLUG],
+              limit: HOME_RANDOM_BUFFER_LIMIT,
+              sort: "random",
+            }),
+          ]);
 
-        if (!isActive) {
-          return;
-        }
+          if (!isActive) {
+            return;
+          }
 
-        setFeaturedPlaces(featuredResponse.items);
-        setNearbyPlaces(nearbyResponse.items);
-      } catch (error) {
-        if (!isActive) {
-          return;
-        }
+          setFeaturedPlaces(prioritizeHomePlaces(featuredResponse.items, HOME_FEATURED_LIMIT));
+          setSpotlightPlaces(prioritizeHomePlaces(spotlightResponse.items, HOME_SPOTLIGHT_LIMIT));
+        } catch (error) {
+          if (!isActive) {
+            return;
+          }
 
-        setErrorMessage(error instanceof Error ? error.message : "Không tải được dữ liệu từ backend.");
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
+          setErrorMessage("Chưa tải được gợi ý lúc này. Bạn thử lại sau nhé.");
+        } finally {
+          if (isActive) {
+            setIsLoading(false);
+          }
         }
       }
-    }
 
-    loadHomeData().catch(() => undefined);
+      loadHomeData().catch(() => undefined);
 
-    return () => {
-      isActive = false;
-    };
-  }, []);
+      return () => {
+        isActive = false;
+      };
+    }, [homeRefreshToken]),
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -599,9 +621,7 @@ export default function HomeTabRoute() {
           return;
         }
 
-        setSearchErrorMessage(
-          error instanceof Error ? error.message : "Không tải được gợi ý realtime.",
-        );
+        setSearchErrorMessage("Chưa tải được gợi ý tìm kiếm. Bạn thử lại sau nhé.");
       } finally {
         if (isActive) {
           setIsSearching(false);
@@ -774,9 +794,6 @@ export default function HomeTabRoute() {
                     <Text selectable style={{ color: theme.colors.coral, fontSize: 13.5, fontWeight: "700" }}>
                       {searchErrorMessage}
                     </Text>
-                    <Text selectable style={{ color: theme.colors.muted, fontSize: 12, lineHeight: 18 }}>
-                      API: {stayfinderApiBaseUrl}
-                    </Text>
                   </View>
                 ) : hasLiveSearchResults ? (
                   <View style={{ paddingBottom: 6, paddingTop: 6 }}>
@@ -893,8 +910,8 @@ export default function HomeTabRoute() {
               </Text>
               <Text selectable style={{ color: "rgba(255,255,255,0.92)", fontSize: 14, lineHeight: 22 }}>
                 {featuredPlaces.length
-                  ? `Đang có ${featuredPlaces.length}+ gợi ý nổi bật lấy trực tiếp từ dataset thật.`
-                  : "Khám phá dữ liệu thật từ backend StayFinder thay cho mock demo."}
+                  ? `${featuredPlaces.length} gợi ý lưu trú nổi bật cho chuyến đi của bạn.`
+                  : "Khám phá những chỗ ở phù hợp cho chuyến đi Đà Nẵng."}
               </Text>
             </View>
           </ImageBackground>
@@ -933,15 +950,13 @@ export default function HomeTabRoute() {
             <Text selectable style={{ color: theme.colors.ink, fontSize: 14, lineHeight: 22 }}>
               {errorMessage}
             </Text>
-            <Text selectable style={{ color: theme.colors.muted, fontSize: 12, lineHeight: 18 }}>
-              API: {stayfinderApiBaseUrl}
-            </Text>
             <Pressable
               onPress={() => {
                 setIsLoading(true);
                 setErrorMessage(null);
                 setFeaturedPlaces([]);
-                setNearbyPlaces([]);
+                setSpotlightPlaces([]);
+                setHomeRefreshToken((current) => current + 1);
               }}
               style={({ pressed }) => ({
                 alignSelf: "flex-start",
@@ -969,8 +984,8 @@ export default function HomeTabRoute() {
               horizontal
               showsHorizontalScrollIndicator={false}
             >
-              {featuredPlaces.map((place, index) => (
-              <FeaturedCard
+              {featuredPlaces.map((place) => (
+                <FeaturedCard
                   key={place.id}
                   place={place}
                   width={featuredCardWidth}
@@ -981,12 +996,12 @@ export default function HomeTabRoute() {
         </View>
 
         <View style={{ gap: 14 }}>
-          <SectionHeader title="Gần Cầu Rồng" />
+          <SectionHeader title={HOME_SPOTLIGHT_TITLE} />
           {isLoading ? (
             <SectionLoadingCard />
           ) : (
             <View style={{ gap: 16 }}>
-              {nearbyPlaces.map((place, index) => (
+              {spotlightPlaces.map((place) => (
                 <NearbyCard
                   key={place.id}
                   place={place}

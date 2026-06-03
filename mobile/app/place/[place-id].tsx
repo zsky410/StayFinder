@@ -1151,10 +1151,10 @@ export default function PlaceDetailRoute() {
                     />
                     <View style={{ flex: 1, gap: 6, maxWidth: 150 }}>
                       <Text selectable style={{ color: theme.colors.ink, fontSize: 15, fontWeight: "700" }}>
-                        Chưa có ảnh nguồn
+                        Chưa có ảnh
                       </Text>
                       <Text selectable style={{ color: theme.colors.muted, fontSize: 13, lineHeight: 20 }}>
-                        Place này hiện không có `image_url` và cũng chưa có item nào trong `place_images`.
+                        Địa điểm này hiện chưa có ảnh để hiển thị. Bạn có thể xem thêm thông tin ở phần review bên dưới.
                       </Text>
                     </View>
                   </View>
