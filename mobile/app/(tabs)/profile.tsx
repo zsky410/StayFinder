@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandHeader } from "@/components/brand-header";
 import { theme } from "@/constants/theme";
 import { sharedAssets } from "@/data/demo-stays";
+import { useAuth } from "@/lib/auth";
 
 type FeatherIconName = React.ComponentProps<typeof Feather>["name"];
 
@@ -40,19 +41,19 @@ const menuItems = [
   {
     icon: "heart",
     label: "Địa điểm đã lưu",
-    onPress: () => router.push("/saved"),
+    onPress: () => router.push("/(tabs)/saved"),
     subtitle: "Xem lại các chỗ ở yêu thích",
   },
   {
     icon: "message-circle",
     label: "Chat AI",
-    onPress: () => router.push("/chat"),
+    onPress: () => router.push("/(tabs)/chat"),
     subtitle: "Tiếp tục tư vấn tìm nơi ở",
   },
   {
     icon: "sliders",
     label: "Bộ lọc tìm kiếm",
-    onPress: () => router.push("/results"),
+    onPress: () => router.push("/(tabs)/results"),
     subtitle: "Khu vực, loại hình và tiện nghi",
   },
 ] satisfies MenuItem[];
@@ -127,6 +128,15 @@ function MenuRow({ item }: { item: MenuItem }) {
 
 export default function ProfileTabRoute() {
   const insets = useSafeAreaInsets();
+  const { isAuthenticated, isInitializing, signOut, user } = useAuth();
+  const displayName = user?.display_name || "Khách StayFinder";
+  const displayEmail = user?.email || "Đăng nhập để đồng bộ trải nghiệm";
+  const joinedAt = user?.created_at
+    ? `Thành viên từ ${new Date(user.created_at).toLocaleDateString("vi-VN", {
+        month: "2-digit",
+        year: "numeric",
+      })}`
+    : "Chưa đăng nhập";
 
   return (
     <View style={{ backgroundColor: theme.colors.page, flex: 1 }}>
@@ -147,7 +157,7 @@ export default function ProfileTabRoute() {
           bellSize={26}
           logoHeight={44}
           logoWidth={188}
-          onPressBell={() => router.push("/chat")}
+          onPressBell={() => router.push("/(tabs)/chat")}
           showNotificationDot
         />
 
@@ -177,10 +187,10 @@ export default function ProfileTabRoute() {
 
           <View style={{ alignItems: "center", gap: 5 }}>
             <Text selectable style={{ color: theme.colors.ink, fontSize: 26, fontWeight: "800", lineHeight: 31 }}>
-              {profileUser.name}
+              {displayName}
             </Text>
             <Text selectable style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "600" }}>
-              {profileUser.handle}
+              {displayEmail}
             </Text>
           </View>
 
@@ -193,29 +203,52 @@ export default function ProfileTabRoute() {
             </View>
             <View style={{ backgroundColor: theme.colors.border, height: 14, width: 1 }} />
             <Text selectable style={{ color: theme.colors.muted, fontSize: 13 }}>
-              {profileUser.joinedAt}
+              {joinedAt}
             </Text>
           </View>
 
-          <Pressable
-            onPress={() => router.push("/results")}
-            style={({ pressed }) => ({
-              alignItems: "center",
-              backgroundColor: theme.colors.accent,
-              borderRadius: 16,
-              borderCurve: "continuous",
-              flexDirection: "row",
-              gap: 8,
-              justifyContent: "center",
-              minHeight: 48,
-              opacity: pressed ? 0.82 : 1,
-              paddingHorizontal: 18,
-              width: "100%",
-            })}
-          >
-            <Feather color="#FFFFFF" name="edit-3" size={17} />
-            <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800" }}>Sửa hồ sơ</Text>
-          </Pressable>
+          {isAuthenticated ? (
+            <Pressable
+              onPress={() => router.push("/(tabs)/results")}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: theme.colors.accent,
+                borderRadius: 16,
+                borderCurve: "continuous",
+                flexDirection: "row",
+                gap: 8,
+                justifyContent: "center",
+                minHeight: 48,
+                opacity: pressed ? 0.82 : 1,
+                paddingHorizontal: 18,
+                width: "100%",
+              })}
+            >
+              <Feather color="#FFFFFF" name="edit-3" size={17} />
+              <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800" }}>Sửa hồ sơ</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              disabled={isInitializing}
+              onPress={() => router.push("/splash")}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: theme.colors.accent,
+                borderRadius: 16,
+                borderCurve: "continuous",
+                flexDirection: "row",
+                gap: 8,
+                justifyContent: "center",
+                minHeight: 48,
+                opacity: pressed || isInitializing ? 0.82 : 1,
+                paddingHorizontal: 18,
+                width: "100%",
+              })}
+            >
+              <Feather color="#FFFFFF" name="log-in" size={17} />
+              <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800" }}>Đăng nhập / Đăng ký</Text>
+            </Pressable>
+          )}
         </View>
 
         <View style={{ flexDirection: "row", gap: 10 }}>
@@ -249,6 +282,29 @@ export default function ProfileTabRoute() {
             ))}
           </View>
         </View>
+
+        {isAuthenticated ? (
+          <Pressable
+            onPress={() => {
+              signOut().catch(() => undefined);
+            }}
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: "#FFF4F4",
+              borderColor: "#F0CECE",
+              borderRadius: 18,
+              borderWidth: 1,
+              flexDirection: "row",
+              gap: 10,
+              justifyContent: "center",
+              minHeight: 52,
+              opacity: pressed ? 0.78 : 1,
+            })}
+          >
+            <Feather color={theme.colors.coral} name="log-out" size={17} />
+            <Text style={{ color: theme.colors.coral, fontSize: 15, fontWeight: "800" }}>Đăng xuất</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </View>
   );

@@ -30,7 +30,7 @@ const LIVE_SEARCH_CACHE_TTL_MS = 45_000;
 const RECENT_SEARCH_LIMIT = 5;
 const HOME_FEATURED_LIMIT = 6;
 const HOME_SPOTLIGHT_LIMIT = 3;
-const HOME_RANDOM_BUFFER_LIMIT = 18;
+const HOME_RANDOM_BUFFER_LIMIT = 50;
 const HOME_SPOTLIGHT_LANDMARK_SLUG = "east-sea-park";
 const HOME_SPOTLIGHT_TITLE = "Gần biển Mỹ Khê";
 
@@ -704,7 +704,7 @@ export default function HomeTabRoute() {
           bellSize={24}
           logoHeight={46}
           logoWidth={192}
-          onPressBell={() => router.push("/chat")}
+          onPressBell={() => router.push("/(tabs)/chat")}
           showNotificationDot
         />
 

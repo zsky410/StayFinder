@@ -3,10 +3,12 @@ import { Stack, router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Linking,
   Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -137,9 +139,10 @@ async function tryOpenUrl(url: string | null | undefined) {
     return;
   }
 
-  const supported = await Linking.canOpenURL(cleaned);
-  if (supported) {
+  try {
     await Linking.openURL(cleaned);
+  } catch {
+    Alert.alert("Không mở được liên kết", "Thiết bị hiện chưa mở được liên kết này. Bạn thử lại sau nhé.");
   }
 }
 
@@ -163,12 +166,21 @@ const socialHostLabels: Array<[string, string]> = [
 const bookingHostLabels: Array<[string, string]> = [
   ["booking.com", "Booking.com"],
   ["agoda.com", "Agoda"],
+  ["bluepillow.com", "Bluepillow"],
   ["traveloka.com", "Traveloka"],
   ["expedia.", "Expedia"],
   ["hotels.com", "Hotels.com"],
   ["tripadvisor.", "Tripadvisor"],
   ["trip.com", "Trip.com"],
   ["airbnb.", "Airbnb"],
+  ["trivago.", "Trivago"],
+  ["kayak.", "Kayak"],
+  ["hotelscombined.", "HotelsCombined"],
+  ["priceline.", "Priceline"],
+  ["zenhotels.", "ZenHotels"],
+  ["hostelworld.", "Hostelworld"],
+  ["skyscanner.", "Skyscanner"],
+  ["momondo.", "Momondo"],
   ["hotelplanner.", "HotelPlanner"],
   ["googleadservices.com", "Liên kết đặt phòng"],
 ];
@@ -210,6 +222,36 @@ function isGoogleMapsLikeHost(host: string) {
     host.includes("maps.app.goo.gl") ||
     host.includes("googleusercontent.com")
   );
+}
+
+function buildPhoneUrl(phone: string | null | undefined) {
+  const cleaned = String(phone || "").replace(/[^\d+]/g, "");
+  return cleaned ? `tel:${cleaned}` : "";
+}
+
+function hasValidCoordinates(place: PlaceDetail) {
+  return (
+    typeof place.lat === "number" &&
+    Number.isFinite(place.lat) &&
+    typeof place.lng === "number" &&
+    Number.isFinite(place.lng)
+  );
+}
+
+function buildMapUrl(place: PlaceDetail) {
+  if (!hasValidCoordinates(place)) {
+    return "";
+  }
+
+  const latitude = place.lat as number;
+  const longitude = place.lng as number;
+  const label = encodeURIComponent(place.title || "Địa điểm");
+
+  if (Platform.OS === "ios") {
+    return `http://maps.apple.com/?ll=${latitude},${longitude}&q=${label}`;
+  }
+
+  return `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`;
 }
 
 function buildLinkItem(urlValue: unknown, fallbackLabel: string, subtitle?: string): PlaceExternalLink | null {
@@ -657,6 +699,8 @@ export default function PlaceDetailRoute() {
   );
   const primaryWebsite = externalLinks.website[0] || null;
   const hasSecondaryLinks = externalLinks.booking.length > 0 || externalLinks.social.length > 0;
+  const phoneUrl = useMemo(() => (place ? buildPhoneUrl(place.phone) : ""), [place]);
+  const mapUrl = useMemo(() => (place ? buildMapUrl(place) : ""), [place]);
   const selectedGalleryIndex =
     galleryModalIndex === null
       ? 0
@@ -727,7 +771,7 @@ export default function PlaceDetailRoute() {
           {errorMessage || "Dữ liệu chi tiết đang trống."}
         </Text>
         <Pressable
-          onPress={() => router.replace("/results")}
+          onPress={() => router.replace("/(tabs)/results")}
           style={({ pressed }) => ({
             backgroundColor: theme.colors.accent,
             borderRadius: 14,
@@ -781,7 +825,7 @@ export default function PlaceDetailRoute() {
               }}
             >
               <Pressable
-                onPress={() => (router.canGoBack() ? router.back() : router.replace("/results"))}
+                onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/results"))}
                 style={{
                   alignItems: "center",
                   backgroundColor: "rgba(255,255,255,0.94)",
@@ -1437,15 +1481,15 @@ export default function PlaceDetailRoute() {
         </Pressable>
 
         <Pressable
-          disabled={!place.phone}
-          onPress={() => tryOpenUrl(place.phone ? `tel:${place.phone}` : null)}
+          disabled={!phoneUrl}
+          onPress={() => tryOpenUrl(phoneUrl)}
           style={({ pressed }) => ({
             alignItems: "center",
             backgroundColor: "#EDF3FF",
             borderRadius: 14,
             height: 52,
             justifyContent: "center",
-            opacity: pressed ? 0.85 : place.phone ? 1 : 0.55,
+            opacity: pressed ? 0.85 : phoneUrl ? 1 : 0.55,
             width: 68,
           })}
         >
@@ -1453,21 +1497,15 @@ export default function PlaceDetailRoute() {
         </Pressable>
 
         <Pressable
-          disabled={!place.lat || !place.lng}
-          onPress={() =>
-            tryOpenUrl(
-              place.lat && place.lng
-                ? `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
-                : null,
-            )
-          }
+          disabled={!mapUrl}
+          onPress={() => tryOpenUrl(mapUrl)}
           style={({ pressed }) => ({
             alignItems: "center",
             backgroundColor: "#EDF3FF",
             borderRadius: 14,
             height: 52,
             justifyContent: "center",
-            opacity: pressed ? 0.85 : place.lat && place.lng ? 1 : 0.55,
+            opacity: pressed ? 0.85 : mapUrl ? 1 : 0.55,
             width: 68,
           })}
         >

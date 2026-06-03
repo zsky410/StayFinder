@@ -1,9 +1,16 @@
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 
 import { AppTabBar } from "@/components/app-tab-bar";
 import { theme } from "@/constants/theme";
+import { useAuth } from "@/lib/auth";
 
 export default function TabLayout() {
+  const { isAuthenticated, isInitializing } = useAuth();
+
+  if (!isInitializing && !isAuthenticated) {
+    return <Redirect href="/splash" />;
+  }
+
   return (
     <Tabs
       initialRouteName="home"

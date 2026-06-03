@@ -1,9 +1,15 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 import cors from "cors";
 import express from "express";
 
+import {
+  getAiConfig,
+  getAiConfigEnv,
+  getEffectiveProviderConfig,
+  updateAiConfig,
+} from "./aiConfig.js";
 import { config } from "./config.js";
 import { pool, query, withTransaction } from "./db.js";
 import {
@@ -32,6 +38,9 @@ import {
 const app = express();
 const adminJobs = new Map();
 const ADMIN_JOB_RETENTION_MS = 30 * 60 * 1000;
+const AUTH_PASSWORD_ITERATIONS = 120_000;
+const AUTH_PASSWORD_KEY_LENGTH = 32;
+const AUTH_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 app.use(express.json({ limit: "2mb" }));
 app.use(
@@ -87,6 +96,208 @@ function normalizePublicImageUrls(values) {
 function pickBestPublicImageUrl(values) {
   const normalized = normalizePublicImageUrls(values);
   return normalized[0] || null;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeDisplayName(value, fallbackEmail) {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (cleaned) {
+    return cleaned.slice(0, 80);
+  }
+
+  return fallbackEmail.split("@")[0]?.slice(0, 40) || "StayFinder user";
+}
+
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function validatePassword(password) {
+  return typeof password === "string" && password.length >= 6 && password.length <= 128;
+}
+
+function hashPassword(password, salt = randomBytes(16).toString("hex")) {
+  const hash = pbkdf2Sync(
+    password,
+    salt,
+    AUTH_PASSWORD_ITERATIONS,
+    AUTH_PASSWORD_KEY_LENGTH,
+    "sha256",
+  ).toString("hex");
+
+  return `pbkdf2_sha256$${AUTH_PASSWORD_ITERATIONS}$${salt}$${hash}`;
+}
+
+function verifyPassword(password, passwordHash) {
+  const [algorithm, iterationsText, salt, expectedHash] = String(passwordHash || "").split("$");
+  const iterations = Number(iterationsText);
+  if (algorithm !== "pbkdf2_sha256" || !Number.isFinite(iterations) || !salt || !expectedHash) {
+    return false;
+  }
+
+  const actualHash = pbkdf2Sync(
+    password,
+    salt,
+    iterations,
+    AUTH_PASSWORD_KEY_LENGTH,
+    "sha256",
+  ).toString("hex");
+
+  const actualBuffer = Buffer.from(actualHash, "hex");
+  const expectedBuffer = Buffer.from(expectedHash, "hex");
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function hashSessionToken(token) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function serializeUser(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    display_name: row.display_name,
+    created_at: row.created_at,
+  };
+}
+
+function readBearerToken(req) {
+  const value = String(req.headers.authorization || "");
+  const match = value.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || "";
+}
+
+async function createAuthSession(client, userId) {
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = hashSessionToken(token);
+  const expiresAt = new Date(Date.now() + AUTH_SESSION_TTL_MS).toISOString();
+
+  await client.query(
+    `INSERT INTO user_sessions (user_id, token_hash, expires_at)
+     VALUES ($1, $2, $3)`,
+    [userId, tokenHash, expiresAt],
+  );
+
+  return {
+    token,
+    expires_at: expiresAt,
+  };
+}
+
+async function getUserForSessionToken(token) {
+  if (!token) {
+    return null;
+  }
+
+  const tokenHash = hashSessionToken(token);
+  const result = await query(
+    `SELECT
+        u.id::text AS id,
+        u.email,
+        u.display_name,
+        u.created_at,
+        s.id::text AS session_id,
+        s.expires_at
+      FROM user_sessions s
+      JOIN app_users u ON u.id = s.user_id
+      WHERE s.token_hash = $1
+        AND s.revoked_at IS NULL
+        AND s.expires_at > now()
+      LIMIT 1`,
+    [tokenHash],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function requireAuthUser(req) {
+  const token = readBearerToken(req);
+  const sessionUser = await getUserForSessionToken(token);
+  if (!sessionUser) {
+    throw unauthorized("Phiên đăng nhập đã hết hạn.");
+  }
+
+  return sessionUser;
+}
+
+async function signupUser(payload) {
+  const email = normalizeEmail(payload.email);
+  const password = String(payload.password || "");
+  if (!validateEmail(email)) {
+    throw badRequest("Email không hợp lệ.");
+  }
+  if (!validatePassword(password)) {
+    throw badRequest("Mật khẩu cần có ít nhất 6 ký tự.");
+  }
+
+  const displayName = normalizeDisplayName(payload.displayName ?? payload.display_name, email);
+  return withTransaction(async (client) => {
+    const existingUser = await client.query("SELECT 1 FROM app_users WHERE lower(email) = lower($1) LIMIT 1", [
+      email,
+    ]);
+    if (existingUser.rowCount) {
+      throw new HttpError(409, "Email này đã được đăng ký.", undefined, "email_taken");
+    }
+
+    const userResult = await client.query(
+      `INSERT INTO app_users (email, password_hash, display_name)
+       VALUES ($1, $2, $3)
+       RETURNING id::text AS id, email, display_name, created_at`,
+      [email, hashPassword(password), displayName],
+    );
+    const session = await createAuthSession(client, userResult.rows[0].id);
+    return {
+      user: serializeUser(userResult.rows[0]),
+      session,
+    };
+  });
+}
+
+async function loginUser(payload) {
+  const email = normalizeEmail(payload.email);
+  const password = String(payload.password || "");
+  if (!validateEmail(email) || !password) {
+    throw unauthorized("Email hoặc mật khẩu không đúng.");
+  }
+
+  return withTransaction(async (client) => {
+    const result = await client.query(
+      `SELECT id::text AS id, email, display_name, password_hash, created_at
+       FROM app_users
+       WHERE email = $1
+       LIMIT 1`,
+      [email],
+    );
+    const user = result.rows[0];
+    if (!user || !verifyPassword(password, user.password_hash)) {
+      throw unauthorized("Email hoặc mật khẩu không đúng.");
+    }
+
+    const session = await createAuthSession(client, user.id);
+    return {
+      user: serializeUser(user),
+      session,
+    };
+  });
+}
+
+async function logoutUser(req) {
+  const token = readBearerToken(req);
+  if (!token) {
+    return { ok: true };
+  }
+
+  await query(
+    `UPDATE user_sessions
+     SET revoked_at = now()
+     WHERE token_hash = $1 AND revoked_at IS NULL`,
+    [hashSessionToken(token)],
+  );
+
+  return { ok: true };
 }
 
 function cleanupAdminJobs() {
@@ -1457,11 +1668,11 @@ function formatAppliedFilters(intent) {
   };
 }
 
-function runCommand(command, args, { cwd = config.rootDir } = {}) {
+function runCommand(command, args, { cwd = config.rootDir, env = process.env } = {}) {
   return new Promise((resolveCommand, rejectCommand) => {
     const child = spawn(command, args, {
       cwd,
-      env: process.env,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -1495,7 +1706,10 @@ function runCommand(command, args, { cwd = config.rootDir } = {}) {
 }
 
 async function runPhase2Json(args) {
-  const { stdout } = await runCommand(config.pythonBin, [config.ragScriptPath, ...args]);
+  const envOverrides = await getAiConfigEnv();
+  const { stdout } = await runCommand(config.pythonBin, [config.ragScriptPath, ...args], {
+    env: { ...process.env, ...envOverrides },
+  });
   try {
     return JSON.parse(stdout);
   } catch (error) {
@@ -1521,11 +1735,24 @@ async function runChatQuery(payload) {
     }
   }
 
-  const generate = parseBoolean(payload.generate, config.chatGenerateDefault);
-  const candidateLimit = parseInteger(payload.candidateLimit, 12, { min: 1, max: 30 });
-  const semanticLimit = parseInteger(payload.semanticLimit, 8, { min: 1, max: 20 });
-  const outputPlaces = parseInteger(payload.outputPlaces, 5, { min: 1, max: 10 });
-  const outputMatches = parseInteger(payload.outputMatches, 5, { min: 1, max: 10 });
+  const { config: aiConfig } = await getAiConfig();
+  const generate = parseBoolean(payload.generate, aiConfig.chat_generate);
+  const candidateLimit = parseInteger(payload.candidateLimit, aiConfig.chat_candidate_limit, {
+    min: 1,
+    max: 30,
+  });
+  const semanticLimit = parseInteger(payload.semanticLimit, aiConfig.chat_semantic_limit, {
+    min: 1,
+    max: 20,
+  });
+  const outputPlaces = parseInteger(payload.outputPlaces, aiConfig.chat_output_places, {
+    min: 1,
+    max: 10,
+  });
+  const outputMatches = parseInteger(payload.outputMatches, aiConfig.chat_output_matches, {
+    min: 1,
+    max: 10,
+  });
 
   const args = [
     "query",
@@ -1649,7 +1876,8 @@ async function getOrGenerateReviewSummary(payload) {
   const identifier = String(payload.placeId || payload.place_id || payload.id || "").trim();
   const titleSearch = String(payload.titleSearch || "").trim();
   const refresh = parseBoolean(payload.refresh, false);
-  const useLlm = parseBoolean(payload.useLlm, config.reviewSummaryUseLlmDefault);
+  const { config: aiConfig } = await getAiConfig();
+  const useLlm = parseBoolean(payload.useLlm, aiConfig.review_summary_use_llm);
 
   if (!identifier && !titleSearch) {
     throw badRequest("placeId or titleSearch is required.");
@@ -2085,6 +2313,267 @@ async function deleteContextNote(identifier) {
   return { deleted: true, id: existing.id, slug: existing.slug };
 }
 
+async function listAppUsers(filters) {
+  const bag = makeParamBag();
+  const where = ["1=1"];
+
+  if (filters.q) {
+    const ref = bag.push(`%${filters.q}%`);
+    where.push(`(u.email ILIKE ${ref} OR u.display_name ILIKE ${ref})`);
+  }
+
+  const countResult = await query(
+    `SELECT COUNT(*)::integer AS total FROM app_users u WHERE ${where.join(" AND ")}`,
+    bag.params,
+  );
+  const total = countResult.rows[0]?.total ?? 0;
+
+  const listBag = makeParamBag();
+  listBag.params.push(...bag.params);
+  const limitRef = listBag.push(filters.limit);
+  const offsetRef = listBag.push(filters.offset);
+
+  const result = await query(
+    `SELECT
+        u.id::text AS id,
+        u.email,
+        u.display_name,
+        u.created_at,
+        u.updated_at,
+        COUNT(s.id) FILTER (
+          WHERE s.revoked_at IS NULL AND s.expires_at > now()
+        )::integer AS active_sessions
+      FROM app_users u
+      LEFT JOIN user_sessions s ON s.user_id = u.id
+      WHERE ${where.join(" AND ")}
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+      LIMIT ${limitRef}
+      OFFSET ${offsetRef}`,
+    listBag.params,
+  );
+
+  return {
+    total,
+    page: Math.floor(filters.offset / filters.limit) + 1,
+    page_size: filters.limit,
+    items: result.rows,
+  };
+}
+
+async function getAppUser(id) {
+  const result = await query(
+    `SELECT
+        u.id::text AS id,
+        u.email,
+        u.display_name,
+        u.created_at,
+        u.updated_at,
+        COUNT(s.id) FILTER (
+          WHERE s.revoked_at IS NULL AND s.expires_at > now()
+        )::integer AS active_sessions
+      FROM app_users u
+      LEFT JOIN user_sessions s ON s.user_id = u.id
+      WHERE u.id::text = $1
+      GROUP BY u.id
+      LIMIT 1`,
+    [id],
+  );
+  if (!result.rows[0]) {
+    throw notFound("Không tìm thấy người dùng.");
+  }
+  return result.rows[0];
+}
+
+async function updateAppUser(id, payload) {
+  await getAppUser(id);
+
+  const updates = {};
+  if (payload.display_name !== undefined) {
+    const cleaned = String(payload.display_name || "").trim();
+    if (!cleaned) {
+      throw badRequest("Tên hiển thị không được để trống.");
+    }
+    updates.display_name = cleaned.slice(0, 80);
+  }
+
+  if (payload.email !== undefined) {
+    const email = normalizeEmail(payload.email);
+    if (!validateEmail(email)) {
+      throw badRequest("Email không hợp lệ.");
+    }
+    const existing = await query(
+      "SELECT 1 FROM app_users WHERE lower(email) = lower($1) AND id::text <> $2 LIMIT 1",
+      [email, id],
+    );
+    if (existing.rowCount) {
+      throw new HttpError(409, "Email này đã được người khác sử dụng.", undefined, "email_taken");
+    }
+    updates.email = email;
+  }
+
+  if (payload.password !== undefined && payload.password !== "") {
+    if (!validatePassword(String(payload.password))) {
+      throw badRequest("Mật khẩu cần có ít nhất 6 ký tự.");
+    }
+    updates.password_hash = hashPassword(String(payload.password));
+  }
+
+  const entries = Object.entries(updates);
+  if (!entries.length) {
+    throw badRequest("Không có trường hợp lệ nào để cập nhật.");
+  }
+
+  const bag = makeParamBag();
+  const setSql = entries.map(([key, value]) => `${key} = ${bag.push(value)}`).join(", ");
+  bag.push(id);
+  await query(`UPDATE app_users SET ${setSql} WHERE id::text = $${bag.params.length}`, bag.params);
+
+  return getAppUser(id);
+}
+
+async function deleteAppUser(id) {
+  const user = await getAppUser(id);
+  await query("DELETE FROM app_users WHERE id::text = $1", [id]);
+  return { deleted: true, id: user.id, email: user.email };
+}
+
+async function revokeAppUserSessions(id) {
+  const user = await getAppUser(id);
+  const result = await query(
+    `UPDATE user_sessions
+     SET revoked_at = now()
+     WHERE user_id = $1::uuid AND revoked_at IS NULL`,
+    [user.id],
+  );
+  return { ok: true, id: user.id, revoked_sessions: result.rowCount || 0 };
+}
+
+const AI_TEST_TIMEOUT_MS = 45_000;
+
+async function testAiConnection(payload) {
+  const queryText = String(payload.query || "").trim() || "Xin chào, bạn có đang hoạt động không?";
+  const provider = await getEffectiveProviderConfig();
+  const start = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_TEST_TIMEOUT_MS);
+
+  const baseResult = {
+    query: queryText,
+    provider: provider.provider,
+    model: provider.chat_model || null,
+  };
+
+  try {
+    if (!provider.api_key) {
+      throw new Error("Chưa cấu hình API key cho provider.");
+    }
+
+    let url;
+    let headers;
+    let body;
+    let extractAnswer;
+
+    if (provider.provider === "anthropic") {
+      const base = (provider.base_url || "https://api.anthropic.com").replace(/\/+$/, "");
+      url = `${base}/v1/messages`;
+      headers = {
+        "Content-Type": "application/json",
+        "x-api-key": provider.api_key,
+        "anthropic-version": "2023-06-01",
+      };
+      body = {
+        model: provider.chat_model,
+        max_tokens: 1024,
+        messages: [{ role: "user", content: queryText }],
+      };
+      if (provider.temperature) {
+        const t = Number(provider.temperature);
+        if (Number.isFinite(t)) body.temperature = t;
+      }
+      extractAnswer = (data) =>
+        Array.isArray(data?.content)
+          ? data.content.map((part) => part?.text).filter(Boolean).join("\n") || null
+          : null;
+    } else {
+      if (!provider.base_url) {
+        throw new Error("Chưa cấu hình Base URL cho provider.");
+      }
+      const base = provider.base_url.replace(/\/+$/, "");
+      url = `${base}/chat/completions`;
+      headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${provider.api_key}`,
+      };
+      body = {
+        model: provider.chat_model,
+        messages: [{ role: "user", content: queryText }],
+      };
+      if (provider.temperature) {
+        const t = Number(provider.temperature);
+        if (Number.isFinite(t)) body.temperature = t;
+      }
+      extractAnswer = (data) => data?.choices?.[0]?.message?.content ?? null;
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+
+    const latency = Date.now() - start;
+
+    if (!response.ok) {
+      const detail = data ? JSON.stringify(data) : text;
+      return {
+        ...baseResult,
+        ok: false,
+        endpoint: url,
+        status: response.status,
+        answer: null,
+        error: `HTTP ${response.status} ${response.statusText}`.trim(),
+        details: String(detail || "").slice(0, 800),
+        latency_ms: latency,
+      };
+    }
+
+    const answer = data ? extractAnswer(data) : null;
+    return {
+      ...baseResult,
+      ok: Boolean(answer),
+      endpoint: url,
+      status: response.status,
+      answer: answer || null,
+      error: answer ? null : "Endpoint phản hồi nhưng không có nội dung trả về.",
+      details: answer ? null : String(text || "").slice(0, 800),
+      latency_ms: latency,
+    };
+  } catch (error) {
+    return {
+      ...baseResult,
+      ok: false,
+      answer: null,
+      error:
+        error?.name === "AbortError"
+          ? `Timeout sau ${AI_TEST_TIMEOUT_MS / 1000}s.`
+          : error?.message || "Test kết nối AI thất bại.",
+      latency_ms: Date.now() - start,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function resolveTargetPlaceIds({ batchKey, placeIds, limit = null }) {
   const cleanedPlaceIds = uniqueStrings(placeIds || []);
   const bag = makeParamBag();
@@ -2428,6 +2917,35 @@ app.get("/health", (_req, res) => {
   });
 });
 
+app.post(
+  "/auth/signup",
+  asyncRoute(async (req, res) => {
+    res.status(201).json(await signupUser(req.body || {}));
+  }),
+);
+
+app.post(
+  "/auth/login",
+  asyncRoute(async (req, res) => {
+    res.json(await loginUser(req.body || {}));
+  }),
+);
+
+app.get(
+  "/auth/me",
+  asyncRoute(async (req, res) => {
+    const user = await requireAuthUser(req);
+    res.json({ user: serializeUser(user) });
+  }),
+);
+
+app.post(
+  "/auth/logout",
+  asyncRoute(async (req, res) => {
+    res.json(await logoutUser(req));
+  }),
+);
+
 app.get(
   "/places",
   asyncRoute(async (req, res) => {
@@ -2654,6 +3172,70 @@ app.delete(
   "/admin/local-context-notes/:id",
   asyncRoute(async (req, res) => {
     res.json(await deleteContextNote(req.params.id));
+  }),
+);
+
+app.get(
+  "/admin/ai-config",
+  asyncRoute(async (_req, res) => {
+    res.json(await getAiConfig());
+  }),
+);
+
+app.put(
+  "/admin/ai-config",
+  asyncRoute(async (req, res) => {
+    res.json(await updateAiConfig((req.body && req.body.config) || req.body || {}));
+  }),
+);
+
+app.post(
+  "/admin/ai-config/test",
+  asyncRoute(async (req, res) => {
+    res.json(await testAiConnection(req.body || {}));
+  }),
+);
+
+app.get(
+  "/admin/users",
+  asyncRoute(async (req, res) => {
+    const limit = parseInteger(req.query.limit, 25, { min: 1, max: 100 });
+    const page = parseInteger(req.query.page, 1, { min: 1 });
+    res.json(
+      await listAppUsers({
+        q: String(req.query.q || "").trim(),
+        limit,
+        offset: (page - 1) * limit,
+      }),
+    );
+  }),
+);
+
+app.get(
+  "/admin/users/:id",
+  asyncRoute(async (req, res) => {
+    res.json(await getAppUser(req.params.id));
+  }),
+);
+
+app.patch(
+  "/admin/users/:id",
+  asyncRoute(async (req, res) => {
+    res.json(await updateAppUser(req.params.id, req.body || {}));
+  }),
+);
+
+app.delete(
+  "/admin/users/:id",
+  asyncRoute(async (req, res) => {
+    res.json(await deleteAppUser(req.params.id));
+  }),
+);
+
+app.post(
+  "/admin/users/:id/revoke-sessions",
+  asyncRoute(async (req, res) => {
+    res.json(await revokeAppUserSessions(req.params.id));
   }),
 );
 
