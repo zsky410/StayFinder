@@ -1,0 +1,210 @@
+diff --git a/node_modules/expo-osm-sdk/android/src/main/java/expo/modules/osmsdk/OSMMapView.kt b/node_modules/expo-osm-sdk/android/src/main/java/expo/modules/osmsdk/OSMMapView.kt
+index 442e3b5..606b8c8 100644
+--- a/node_modules/expo-osm-sdk/android/src/main/java/expo/modules/osmsdk/OSMMapView.kt
++++ b/node_modules/expo-osm-sdk/android/src/main/java/expo/modules/osmsdk/OSMMapView.kt
+@@ -27,7 +27,12 @@ import expo.modules.kotlin.views.ExpoView
+ import expo.modules.kotlin.AppContext
+ import android.graphics.Bitmap
+ import android.graphics.BitmapFactory
++import android.graphics.Canvas
+ import android.graphics.Color
++import android.graphics.Paint
++import android.graphics.Rect
++import android.graphics.RectF
++import android.graphics.Typeface
+ import android.widget.FrameLayout
+ import kotlinx.coroutines.*
+ import java.net.URL
+@@ -101,6 +106,7 @@ class OSMMapView(context: Context, appContext: AppContext) : ExpoView(context, a
+     // Icon loading support
+     private val iconCache = mutableMapOf<String, Bitmap>()
+     private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
++    private var renderedMarkerZoomBucket: Int? = null
+     
+     // Event dispatchers
+     private val onMapReady by EventDispatcher()
+@@ -317,8 +323,11 @@ class OSMMapView(context: Context, appContext: AppContext) : ExpoView(context, a
+                     "latitude" to target.latitude,
+                     "longitude" to target.longitude,
+                     "latitudeDelta" to (bounds.northEast.latitude - bounds.southWest.latitude),
+-                    "longitudeDelta" to (bounds.northEast.longitude - bounds.southWest.longitude)
++                    "longitudeDelta" to (bounds.northEast.longitude - bounds.southWest.longitude),
++                    "zoom" to map.cameraPosition.zoom
+                 ))
++
++                refreshMarkersForZoomIfNeeded()
+             }
+             
+             // Marker click listener
+@@ -475,6 +484,7 @@ class OSMMapView(context: Context, appContext: AppContext) : ExpoView(context, a
+             
+             
+             // Add markers to map
++            renderedMarkerZoomBucket = null
+             addMarkersToMap()
+         } catch (e: Exception) {
+             // ignored
+@@ -484,7 +494,12 @@ class OSMMapView(context: Context, appContext: AppContext) : ExpoView(context, a
+     // Add markers to map with custom icon support
+     private fun addMarkersToMap() {
+         maplibreMap?.let { map ->
+-            markers.forEach { marker ->
++            val currentZoom = map.cameraPosition.zoom
++            renderedMarkerZoomBucket = markerZoomBucket(currentZoom)
++
++            markers
++                .filter { marker -> shouldShowMarkerAtZoom(marker, currentZoom) }
++                .forEach { marker ->
+                 coroutineScope.launch {
+                     val markerOptions = MarkerOptions()
+                         .position(marker.coordinate)
+@@ -515,6 +530,14 @@ class OSMMapView(context: Context, appContext: AppContext) : ExpoView(context, a
+                         }
+                     }
+ 
++                    if (marker.icon == null && !marker.title.isNullOrBlank()) {
++                        val iconFactory = IconFactory.getInstance(context)
++                        val icon = iconFactory.fromBitmap(
++                            createLabeledMarkerBitmap(marker, markerScaleForZoom(currentZoom))
++                        )
++                        markerOptions.icon(icon)
++                    }
++                    
+                     // Add marker to map on main thread
+                     withContext(Dispatchers.Main) {
+                         val mapMarker = map.addMarker(markerOptions)
+@@ -525,6 +548,134 @@ class OSMMapView(context: Context, appContext: AppContext) : ExpoView(context, a
+         }
+     }
+ 
++    private fun refreshMarkersForZoomIfNeeded() {
++        val map = maplibreMap ?: return
++        val bucket = markerZoomBucket(map.cameraPosition.zoom)
++        if (renderedMarkerZoomBucket == bucket) {
++            return
++        }
++
++        mapMarkers.forEach { marker ->
++            map.removeMarker(marker)
++        }
++        mapMarkers.clear()
++        addMarkersToMap()
++    }
++
++    private fun markerZoomBucket(zoom: Double): Int {
++        return when {
++            zoom < 11.8 -> 0
++            zoom < 13.0 -> 1
++            zoom < 14.3 -> 2
++            zoom < 15.8 -> 3
++            else -> 4
++        }
++    }
++
++    private fun shouldShowMarkerAtZoom(marker: MarkerData, zoom: Double): Boolean {
++        if (marker.id == "place") {
++            return true
++        }
++        return zoom >= 11.8
++    }
++
++    private fun markerScaleForZoom(zoom: Double): Float {
++        return when {
++            zoom < 13.0 -> 0.78f
++            zoom < 14.3 -> 0.9f
++            zoom < 15.8 -> 1.0f
++            else -> 1.12f
++        }
++    }
++
++    private fun createLabeledMarkerBitmap(marker: MarkerData, scale: Float): Bitmap {
++        val density = context.resources.displayMetrics.density
++        val title = marker.title.orEmpty().trim()
++        val subtitle = marker.description.orEmpty().trim()
++        val isPlace = marker.id == "place"
++        val pinColor = if (isPlace) Color.rgb(43, 88, 232) else Color.rgb(236, 72, 82)
++        val textColor = Color.rgb(23, 35, 63)
++        val subtitleColor = Color.rgb(84, 96, 124)
++        val strokeColor = Color.argb(55, 23, 35, 63)
++
++        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
++            color = textColor
++            textSize = 9.5f * density * scale
++            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
++        }
++        val subtitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
++            color = subtitleColor
++            textSize = 8f * density * scale
++            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
++        }
++        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
++        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
++            color = strokeColor
++            style = Paint.Style.STROKE
++            strokeWidth = 1f * density * scale
++        }
++        val pinPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pinColor }
++        val pinBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
++            color = Color.WHITE
++            style = Paint.Style.STROKE
++            strokeWidth = 2f * density * scale
++        }
++
++        val compactTitle = ellipsizeForMarker(title, if (isPlace) 20 else 15)
++        val compactSubtitle = ellipsizeForMarker(subtitle, 13)
++        val titleBounds = Rect()
++        val subtitleBounds = Rect()
++        titlePaint.getTextBounds(compactTitle, 0, compactTitle.length, titleBounds)
++        if (compactSubtitle.isNotBlank()) {
++            subtitlePaint.getTextBounds(compactSubtitle, 0, compactSubtitle.length, subtitleBounds)
++        }
++
++        val pinSize = 18f * density * scale
++        val gap = 3f * density * scale
++        val horizontalPadding = 7f * density * scale
++        val verticalPadding = if (compactSubtitle.isNotBlank()) 5f * density * scale else 4f * density * scale
++        val maxLabelWidth = 120f * density * scale
++        val labelWidth = minOf(
++            maxLabelWidth,
++            maxOf(titleBounds.width(), subtitleBounds.width()).toFloat() + horizontalPadding * 2
++        )
++        val labelHeight = if (compactSubtitle.isNotBlank()) 29f * density * scale else 21f * density * scale
++        val bitmapWidth = (maxOf(pinSize, labelWidth) + 8f * density * scale).toInt()
++        val bitmapHeight = (labelHeight + gap + pinSize + 4f * density * scale).toInt()
++        val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
++        val canvas = Canvas(bitmap)
++
++        val pinCenterX = bitmapWidth / 2f
++        val pinCenterY = bitmapHeight - pinSize / 2f - 2f * density * scale
++        canvas.drawCircle(pinCenterX, pinCenterY, pinSize / 2.15f, pinPaint)
++        canvas.drawCircle(pinCenterX, pinCenterY, pinSize / 2.15f, pinBorderPaint)
++        canvas.drawCircle(pinCenterX, pinCenterY, pinSize / 4.7f, fillPaint)
++
++        val labelLeft = (bitmapWidth - labelWidth) / 2f
++        val labelTop = 2f * density * scale
++        val labelRect = RectF(labelLeft, labelTop, labelLeft + labelWidth, labelTop + labelHeight)
++        canvas.drawRoundRect(labelRect, labelHeight / 2, labelHeight / 2, fillPaint)
++        canvas.drawRoundRect(labelRect, labelHeight / 2, labelHeight / 2, strokePaint)
++
++        val textLeft = labelLeft + horizontalPadding
++        val titleBaseline = labelTop + verticalPadding - titlePaint.fontMetrics.ascent
++        canvas.drawText(compactTitle, textLeft, titleBaseline, titlePaint)
++        if (compactSubtitle.isNotBlank()) {
++            val subtitleBaseline = titleBaseline + 11f * density * scale
++            canvas.drawText(compactSubtitle, textLeft, subtitleBaseline, subtitlePaint)
++        }
++
++        return bitmap
++    }
++
++    private fun ellipsizeForMarker(value: String, maxLength: Int): String {
++        val trimmed = value.trim()
++        if (trimmed.length <= maxLength) {
++            return trimmed
++        }
++        return trimmed.take(maxLength - 1) + "…"
++    }
++    
+     // Load icon from URI with caching
+     private suspend fun loadIconFromUri(uri: String): Bitmap? = withContext(Dispatchers.IO) {
+         try {

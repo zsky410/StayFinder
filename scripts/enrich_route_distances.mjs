@@ -71,7 +71,7 @@ async function main() {
   const limit = parseInteger(process.env.OSRM_ENRICH_LIMIT, 500);
   const onlyMissing = String(process.env.OSRM_ENRICH_ONLY_MISSING ?? "true") !== "false";
   const baseUrl = process.env.OSRM_BASE_URL || "https://router.project-osrm.org";
-  const maxDistanceM = parseInteger(process.env.OSRM_ENRICH_MAX_DISTANCE_M, 5000);
+  const maxDistanceM = parseInteger(process.env.OSRM_ENRICH_MAX_DISTANCE_M, 15000);
   const timeoutMs = parseInteger(process.env.OSRM_TIMEOUT_MS, 8000);
   const concurrency = parseInteger(process.env.OSRM_ENRICH_CONCURRENCY, 3);
 
@@ -93,12 +93,11 @@ async function main() {
       FROM place_landmark_metrics plm
       JOIN places p ON p.id = plm.place_id
       JOIN local_landmarks l ON l.id = plm.landmark_id
-      WHERE l.kind = 'point'
-        AND p.lat IS NOT NULL
+      WHERE p.lat IS NOT NULL
         AND p.lng IS NOT NULL
         AND plm.anchor_lat IS NOT NULL
         AND plm.anchor_lng IS NOT NULL
-        AND ($1::boolean = false OR plm.walking_distance_m IS NULL OR plm.driving_distance_m IS NULL)
+        AND ($1::boolean = false OR plm.driving_distance_m IS NULL)
         AND plm.distance_m <= $3
       ORDER BY plm.distance_m ASC NULLS LAST, plm.computed_at ASC NULLS FIRST
       LIMIT $2`,
